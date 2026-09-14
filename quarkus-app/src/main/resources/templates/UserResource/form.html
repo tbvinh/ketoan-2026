@@ -1,0 +1,19 @@
+
+<form hx-post="/dashboard/users" hx-target="#content" class="box">
+    <div class="field">
+        <label class="label">Username</label>
+        <input class="input" type="text" name="username" required />
+    </div>
+    <div class="field">
+        <label class="label">Password</label>
+        <input class="input" type="text" name="password" required />
+    </div>
+    <div class="field">
+        <label class="label">Role</label>
+        <select class="select" name="role">
+            <option value="user">user</option>
+            <option value="admin">admin</option>
+        </select>
+    </div>
+    <button type="submit" class="button is-primary">Lưu</button>
+</form>

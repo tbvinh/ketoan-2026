@@ -1,0 +1,28 @@
+
+<h2>Danh sách phiếu nhập kho</h2>
+
+<button hx-get="/dashboard/phieunhap/new" hx-target="#content" class="button is-primary">
+    + Tạo phiếu mới
+</button>
+
+<table class="table is-striped">
+    <thead>
+        <tr><th>Mã phiếu</th><th>Nhà cung cấp</th><th>Ngày tạo</th><th>Trạng thái</th><th></th></tr>
+    </thead>
+    <tbody>
+        {#for p in phieuList}
+        <tr>
+            <td>{p.id} - {p.maPhieu}</td>
+            <td>{p.nhaCungCap ?: '-'}</td>
+            <td>{p.ngayTao}</td>
+            
+            <td><span class="tag {p.status == 'DRAFT' ? 'is-warning' : 'is-success'}">{p.status}</span></td>
+            <td>
+                <button hx-get="/dashboard/phieunhap/{p.id}" hx-target="#content" class="button is-small is-link">
+                    Xem
+                </button>
+            </td>
+        </tr>
+        {/for}
+    </tbody>
+</table>

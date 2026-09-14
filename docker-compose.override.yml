@@ -1,0 +1,14 @@
+
+services:
+  quarkus:
+    build:
+      context: ./quarkus-app
+      dockerfile: Dockerfile-debug   # dùng Dockerfile-debug thay vì Dockerfile
+    volumes:
+      - ./quarkus-app:/app           # mount source code để sửa on the fly
+      - ~/.m2:/root/.m2              # cache Maven
+    command: ["mvn", "compile", "quarkus:dev", "-Dquarkus.http.host=0.0.0.0"]
+    ports:
+      - "8081:8080"
+    environment:
+      QUARKUS_PROFILE: dev

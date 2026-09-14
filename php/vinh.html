@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard Ribbon Style</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <!-- Header chính -->
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+      <!-- Nút toggle sidebar trên mobile -->
+      <button class="btn btn-outline-light d-md-none me-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebarMenu">
+        ☰
+      </button>
+      <a class="navbar-brand" href="#">Admin Panel</a>
+    </div>
+  </nav>
+
+<!-- Ribbon bar chỉ hiện trên desktop -->
+<nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom d-none d-md-block">
+  <div class="container-fluid">
+    <ul class="navbar-nav me-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle active" href="#" data-bs-toggle="dropdown">Home</a>
+        <ul class="dropdown-menu">
+          <li><a class="dropdown-item" href="#">📤 Export</a></li>
+          <li><a class="dropdown-item" href="#">❌ Quit</a></li>
+        </ul>
+      </li>
+      <li class="nav-item"><a class="nav-link" href="#">Insert</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">View</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Sidebar offcanvas cho mobile -->
+<div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarMenu">
+  <div class="offcanvas-header">
+    <h5 class="offcanvas-title">Menu</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+  </div>
+  <div class="offcanvas-body">
+    <ul class="nav flex-column">
+      <li class="nav-item"><a class="nav-link" href="#">🏠 Dashboard</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">📊 Reports</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">👥 Users</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">⚙️ Settings</a></li>
+      <hr>
+      <!-- Ribbon menu dồn vào sidebar -->
+      <li class="nav-item"><a class="nav-link" href="#">Home ▸ Export</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">Home ▸ Quit</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">Insert</a></li>
+      <li class="nav-item"><a class="nav-link" href="#">View</a></li>
+    </ul>
+  </div>
+</div>
+
+
+
+  <div class="d-flex">
+    <!-- Sidebar cố định trên desktop -->
+    <nav class="bg-light p-3 d-none d-md-block" style="width:220px; min-height:100vh;">
+      <h4>Menu</h4>
+      <ul class="nav flex-column">
+        <li class="nav-item"><a class="nav-link" href="#">🏠 Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="#">📊 Reports</a></li>
+        <li class="nav-item"><a class="nav-link" href="#">👥 Users</a></li>
+        <li class="nav-item"><a class="nav-link" href="#">⚙️ Settings</a></li>
+      </ul>
+    </nav>
+
+    <!-- Sidebar offcanvas cho mobile -->
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarMenu">
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title">Menu</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+      </div>
+      <div class="offcanvas-body">
+        <ul class="nav flex-column">
+          <li class="nav-item"><a class="nav-link" href="#">🏠 Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">📊 Reports</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">👥 Users</a></li>
+          <li class="nav-item"><a class="nav-link" href="#">⚙️ Settings</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-grow-1 p-4">
+      <h2>Dashboard Overview</h2>
+      <div class="row">
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Users</h5>
+              <p class="card-text">123 active users</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Sales</h5>
+              <p class="card-text">$4,500 this month</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5 class="card-title">Performance</h5>
+              <p class="card-text">95% uptime</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-white text-center p-3">
+    &copy; 2026 Admin Dashboard
+  </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

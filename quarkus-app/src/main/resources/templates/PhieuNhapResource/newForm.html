@@ -1,0 +1,11 @@
+
+<h2>Tạo phiếu nhập kho mới</h2>
+
+<form hx-post="/dashboard/phieunhap/new" hx-target="#content" class="box">
+    <div class="field">
+        <label class="label">Nhà cung cấp</label>
+        <input class="input" type="text" name="nhaCungCap" placeholder="Tên nhà cung cấp (có thể để trống)" />
+    </div>
+    <button type="submit" class="button is-primary">Tạo phiếu</button>
+    <button type="button" hx-get="/dashboard/phieunhap" hx-target="#content" class="button">Huỷ</button>
+</form>

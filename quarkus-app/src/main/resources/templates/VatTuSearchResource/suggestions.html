@@ -1,0 +1,13 @@
+{#if items.size() > 0}
+<div class="dropdown-content" id="vattu-dropdown"
+     style="position:absolute; z-index:10; background:white; border:1px solid #ddd; width:100%;">
+    {#for item in items}
+    <a class="dropdown-item"
+       style="display:block; padding:6px 10px; cursor:pointer;"
+       onclick="chonVatTu({item.id}, '{item.maHang}', '{item.tenHang}', '{item.giaNhapGanNhat ?: 0}')">
+        <strong>{item.maHang}</strong> — {item.tenHang}
+        {#if item.donViTinh}<small>({item.donViTinh})</small>{/if}
+    </a>
+    {/for}
+</div>
+{/if}

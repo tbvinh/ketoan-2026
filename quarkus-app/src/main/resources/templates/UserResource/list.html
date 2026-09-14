@@ -1,0 +1,33 @@
+
+<div id="content-user">
+    <h2>Quản lý người dùng</h2>
+
+    <button hx-get="/dashboard/users/new" hx-target="#user-form-container" class="button is-primary">
+        + Thêm user
+    </button>
+
+    <div id="user-form-container"></div>
+
+    <table class="table is-striped">
+        <thead>
+            <tr><th>Username</th><th>Role</th><th>Trạng thái</th><th></th></tr>
+        </thead>
+        <tbody>
+            {#for user in users}
+            <tr>
+                <td>{user.username}</td>
+                <td>{user.role}</td>
+                <td>{user.active ? "Hoạt động" : "Khoá"}</td>
+                <td>
+                    <button hx-delete="/dashboard/users/{user.id}"
+                            hx-target="#content"
+                            hx-confirm="Xoá user {user.username}?"
+                            class="button is-danger is-small">
+                        Xoá
+                    </button>
+                </td>
+            </tr>
+            {/for}
+        </tbody>
+    </table>
+</div>

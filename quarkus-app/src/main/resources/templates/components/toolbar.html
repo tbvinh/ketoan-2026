@@ -1,0 +1,41 @@
+{#let activeMenu=(menu ?: currentSubMenu ?: "file")}
+{#if activeMenu == "file"}
+    <button class="btn btn-primary me-2 py-1 px-2 btn-sm"><i class="fa fa-edit"></i> Compose</button>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-reply"></i> Reply</button>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-share"></i> Forward</button>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-trash"></i> Delete</button>
+{#else if activeMenu == "edit"}
+    <div class="dropdown d-inline-block me-2">
+        <button class="btn btn-primary py-1 px-2 btn-sm dropdown-toggle" type="button" id="dropdownNewItem" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa fa-plus me-1"></i> New Item
+        </button>
+        <ul class="dropdown-menu shadow-sm" aria-labelledby="dropdownNewItem">
+            <li><a class="dropdown-item fw-medium" href="#"><i class="far fa-file-word text-primary me-2"></i> New Document</a></li>
+            <li><a class="dropdown-item fw-medium" href="#"><i class="far fa-file-excel text-success me-2"></i> New Excel</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-java text-danger me-2"></i> New Java</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li class="dropdown-submenu" id="submenuOthersContainer">
+                <a class="dropdown-item fw-medium d-flex justify-content-between align-items-center" href="#" id="btnSubmenuOthers">
+                    <span><i class="fa fa-ellipsis-h me-2 text-muted"></i> Others</span>
+                    <i class="fa fa-chevron-right ms-2" style="font-size: 10px;"></i>
+                </a>
+                <ul class="dropdown-menu shadow-sm">
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-python text-warning me-2"></i> Python</a></li>
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-react text-info me-2"></i> Reactjs</a></li>
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-php me-2" style="color: #777bb4;"></i> PHP</a></li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-copy"></i> Copy</button>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-paste"></i> Paste</button>
+{#else if activeMenu == "view"}
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-search-plus"></i> Zoom In</button>
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-sync"></i> Refresh</button>
+{#else if activeMenu == "tools"}
+    <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-cog"></i> Options</button>
+{#else if activeMenu == "help"}
+    <button class="btn btn-info text-white me-2 py-1 px-2 btn-sm"><i class="fa fa-question-circle"></i> Docs</button>
+{/if}
+{/let}

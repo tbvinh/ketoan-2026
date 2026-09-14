@@ -1,0 +1,78 @@
+
+<h2>Phiếu nhập kho: {phieu.maPhieu} <span class="tag {phieu.status == 'DRAFT' ? 'is-warning' : 'is-success'}">{phieu.status}</span></h2>
+
+<button hx-get="/dashboard/phieunhap/new" hx-target="#content" class="button is-primary">
+    + Tạo phiếu mới
+</button>
+
+<table class="table is-striped" id="chitiet-table">
+    <thead>
+        <tr><th>Mã hàng</th><th>Tên hàng</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th></th></tr>
+    </thead>
+    <tbody>
+        {#for ct in phieu.chiTietList}
+        <tr>
+            <td>{ct.maHang}</td>
+            <td>{ct.tenHang}</td>
+            <td>{ct.soLuong}</td>
+            <td>{ct.donGia}</td>
+            <td>{ct.thanhTien}</td>
+            <td>
+                {#if phieu.status == 'DRAFT'}
+                <button hx-delete="/dashboard/phieunhap/{phieu.id}/chitiet/{ct.id}"
+                        hx-target="#content" class="button is-danger is-small">Xoá</button>
+                {/if}
+            </td>
+        </tr>
+        {/for}
+    </tbody>
+    <tfoot>
+        <tr><td colspan="4"><strong>Tổng cộng</strong></td><td><strong>{phieu.getTongTien()}</strong></td><td></td></tr>
+    </tfoot>
+</table>
+
+{#if phieu.status == 'DRAFT'}
+<form hx-post="/dashboard/phieunhap/{phieu.id}/chitiet" hx-target="#popup-container" class="box">
+    <div class="field is-grouped" style="position:relative;">
+        <div style="position:relative; flex:1;">
+            <input class="input" id="maHang-input" placeholder="Nhập mã hoặc tên vật tư..."
+                   autocomplete="off" required
+                   hx-get="/dashboard/vattu/search"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#vattu-suggestions"
+                   hx-vals='js:{"q": document.getElementById("maHang-input").value}' />
+            <input type="hidden" name="vatTuId" id="vatTuId-input" />
+            <div id="vattu-suggestions"></div>
+        </div>
+        <input class="input" name="tenHang" id="tenHang-input" placeholder="Tên hàng" readonly />
+        <input class="input" type="number" step="0.01" name="soLuong" placeholder="Số lượng" required />
+        <input class="input" type="number" step="0.01" name="donGia" id="donGia-input" placeholder="Đơn giá" required />
+        <button type="submit" class="button is-link">+ Thêm dòng</button>
+    </div>
+</form>
+<div id="popup-container"></div>
+
+<script>
+    function chonVatTu(id, maHang, tenHang, giaGanNhat) {
+        document.getElementById('vatTuId-input').value = id;
+        document.getElementById('maHang-input').value = maHang;
+        document.getElementById('tenHang-input').value = tenHang;
+        document.getElementById('donGia-input').value = giaGanNhat;
+        document.getElementById('vattu-suggestions').innerHTML = '';
+    }
+
+    // Đóng dropdown khi click ra ngoài, và reset vatTuId nếu người dùng sửa lại mã hàng
+    document.addEventListener('click', function (e) {
+        const box = document.getElementById('vattu-suggestions');
+        const input = document.getElementById('maHang-input');
+        if (box && !box.contains(e.target) && e.target !== input) {
+            box.innerHTML = '';
+        }
+    });
+
+    document.getElementById('maHang-input').addEventListener('input', function () {
+        // Người dùng gõ lại thủ công sau khi đã chọn → huỷ lựa chọn cũ, buộc chọn lại
+        document.getElementById('vatTuId-input').value = '';
+    });
+</script>
+{/if}

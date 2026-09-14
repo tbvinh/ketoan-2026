@@ -1,0 +1,13 @@
+{@java.util.List<com.ketoan.model.Email> emails}
+
+    <h4 id="contentTitle" hx-swap-oob="true">Sent</h4>
+<div class="email-list">
+    {#for email in emails}
+        <div class="email-item py-2 border-bottom">
+            <strong>{email.sender}</strong> - {email.subject}
+            <span class="text-muted float-end">{email.date}</span>
+        </div>
+    {#else}
+        <div class="p-3 text-muted">Không có email nào.</div>
+    {/for}
+</div>

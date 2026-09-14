@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Outlook Style App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: "Segoe UI", sans-serif;
+            background-color: #f8f9fa;
+        }
+
+        /* === TOPBAR === */
+        .topbar {
+            background-color: #0078d4;
+            color: white;
+            padding: 10px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1002;
+            height: 50px;
+        }
+
+        /* Container bao bọc ô Search */
+        .search-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        /* Tùy chỉnh Input Search */
+        .search-input {
+            width: 200px;
+            padding-right: 32px;
+            /* Dành khoảng trống bên phải cho icon */
+            font-size: 13px;
+            border-radius: 4px;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Ô search tự rộng ra nhẹ khi click vào (giống Outlook) */
+        .search-input:focus {
+            width: 240px;
+            background-color: #ffffff;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+        }
+
+        /* Nút Icon Search (Mặc định ẩn) */
+        .btn-search-icon {
+            position: absolute;
+            right: 4px;
+            background: transparent;
+            border: none;
+            color: #0078d4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+
+            /* Hiệu ứng ẩn/hiện */
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(0.8);
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-search-icon:hover {
+            background-color: #f3f2f1;
+        }
+
+        /* KHI FOCUS VÀO INPUT: Tự động hiện nút Icon Search */
+        .search-wrapper:focus-within .btn-search-icon {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1);
+        }
+
+        /* === SIDEBAR ICONS (VẠCH ACTIVE 2PX SÁT MÉP TRÁI) === */
+        .sidebar-icons {
+            height: calc(100vh - 50px);
+            width: 60px;
+            background-color: #f3f2f1;
+            border-right: 1px solid #ddd;
+            position: fixed;
+            top: 40px;
+            left: 0;
+            text-align: center;
+            padding-top: 0px;
+            z-index: 1001;
+        }
+
+        .sidebar-icons a {
+            display: block;
+            color: #555;
+            font-size: 20px;
+            margin: 10px 0;
+            text-decoration: none;
+            padding: 10px 0;
+            transition: color 0.2s, background-color 0.2s;
+            position: relative;
+        }
+
+        .sidebar-icons a:hover {
+            color: #0078d4;
+            background-color: rgba(0, 0, 0, 0.04);
+        }
+
+        /* Vạch active 2px sát mép trái */
+        .sidebar-icons a.active {
+            color: #0078d4;
+            background-color: #ffffff;
+        }
+
+        .sidebar-icons a.active::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 2px;
+            height: 100%;
+            background-color: #0078d4;
+            border-radius: 0 2px 2px 0;
+        }
+
+        /* === MENUBAR PHẲNG & HIGHLIGHT THANH DƯỚI DÀNH CHO MENU === */
+        .menubar {
+            background-color: #f3f2f1;
+            border-bottom: 1px solid #ddd;
+            position: fixed;
+            top: 50px;
+            left: 60px;
+            right: 0;
+            height: 40px;
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+        }
+
+        .menubar .nav-link {
+            color: #333;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .menubar .nav-link:hover {
+            color: #0078d4;
+            background-color: rgba(0, 0, 0, 0.04);
+            border-radius: 4px;
+        }
+
+        /* HIGHLIGHT MENU ĐƯỢC CHỌN */
+        .menubar .nav-link.active {
+            color: #0078d4;
+            font-weight: 600;
+        }
+
+        /* Thanh vạch bên dưới Menu active */
+        .menubar .nav-link.active::after {
+            content: "";
+            position: absolute;
+            bottom: -1px;
+            left: 10%;
+            width: 80%;
+            height: 3px;
+            background-color: #0078d4;
+            border-radius: 3px 3px 0 0;
+            box-shadow: 0 1px 3px rgba(0, 120, 212, 0.4);
+        }
+
+        /* === TOOLBAR 3D & BO GÓC === */
+        .toolbar {
+            background: linear-gradient(180deg, #ffffff 0%, #f3f2f1 100%);
+            border: 1px solid #d2d0ce;
+            border-radius: 8px;
+            /* Bo góc */
+            position: fixed;
+            top: 95px;
+            left: 65px;
+            right: 10px;
+            height: 44px;
+            z-index: 998;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.12);
+        }
+
+        .toolbar .btn {
+            font-size: 13px;
+            font-weight: 500;
+            padding: 4px 12px;
+        }
+
+        /* === SIDEBAR MAIN === */
+        .sidebar-main {
+            height: calc(100vh - 145px);
+            background-color: #f3f2f1;
+            border-right: 1px solid #ddd;
+            padding-top: 10px;
+            position: fixed;
+            top: 145px;
+            left: 60px;
+            width: 200px;
+            transition: transform 0.3s ease;
+            z-index: 996;
+        }
+
+        .sidebar-main.hidden {
+            transform: translateX(-200px);
+        }
+
+        .sidebar-main a {
+            color: #333;
+            text-decoration: none;
+            display: block;
+            padding: 10px 20px;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .sidebar-main a:hover,
+        .sidebar-main a.active-sub {
+            background-color: #e1dfdd;
+            font-weight: 600;
+        }
+
+        /* === CONTENT AREA === */
+        .content {
+            margin-left: 260px;
+            padding: 20px;
+            margin-top: 145px;
+            transition: margin-left 0.3s ease;
+        }
+
+        .content.expanded {
+            margin-left: 60px;
+        }
+
+        /* Styling Sub-menu cấp 2 cho Dropdown */
+        .dropdown-submenu {
+            position: relative;
+        }
+
+        /* Hiển thị sub-menu khi Hover (dành cho PC) */
+        @media (min-width: 992px) {
+            .dropdown-submenu:hover>.dropdown-menu {
+                display: block;
+            }
+        }
+
+        /* Hiển thị sub-menu khi được nhấp chọn (dành cho Mobile & Tablet) */
+        .dropdown-submenu.show>.dropdown-menu {
+            display: block;
+        }
+
+        /* Mặc định ẩn sub-menu */
+        .dropdown-submenu .dropdown-menu {
+            top: 0;
+            left: 100%;
+            margin-top: -1px !important;
+            display: none;
+        }
+
+        /* Khi hover vào nút Others thì hiển thị Sub-menu */
+        .dropdown-submenu:hover>.dropdown-menu {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Topbar -->
+    <div class="topbar d-flex justify-content-between align-items-center">
+        <div>
+            <i class="fa fa-envelope"></i> Outlook
+            <span class="d-none d-sm-inline">Dashboard</span>
+        </div>
+        <!-- <div><i class="fa fa-envelope"></i> Outlook Dashboard</div> -->
+        <!-- Ô Tìm kiếm Outlook có Focus Indicator & Nút Search -->
+        <div class="search-wrapper">
+            <input type="text" class="form-control search-input" placeholder="Search...">
+            <button type="button" class="btn-search-icon" title="Search">
+                <i class="fa fa-search"></i>
+            </button>
+        </div>
+        <!-- <div>
+      <input type="text" class="form-control d-inline-block" style="width:200px;" placeholder="Search...">
+      <i class="fa fa-user-circle ms-3"></i>
+    </div> -->
+    </div>
+
+    <!-- Sidebar Icons (5 app bên trái) -->
+    <div class="sidebar-icons" id="sidebarIcons">
+        <a href="#" data-app="mail" class="active" title="Mail"><i class="fa fa-envelope"></i></a>
+        <a href="#" data-app="calendar" title="Calendar"><i class="fa fa-calendar"></i></a>
+        <a href="#" data-app="contacts" title="Contacts"><i class="fa fa-address-book"></i></a>
+        <a href="#" data-app="tasks" title="Tasks"><i class="fa fa-tasks"></i></a>
+        <a href="#" data-app="settings" title="Settings"><i class="fa fa-cog"></i></a>
+    </div>
+
+    <!-- Menu bar -->
+    <div class="menubar ps-2">
+        <button id="toggleSidebar" class="btn btn-sm btn-light border me-2"><i class="fa fa-bars"></i></button>
+        <ul class="nav">
+            <li class="nav-item"><a class="nav-link active" data-menu="file" href="#">File</a></li>
+            <li class="nav-item"><a class="nav-link" data-menu="edit" href="#">Edit</a></li>
+            <li class="nav-item"><a class="nav-link" data-menu="view" href="#">View</a></li>
+            <li class="nav-item"><a class="nav-link" data-menu="tools" href="#">Tools</a></li>
+            <li class="nav-item d-none d-sm-block">
+                <a class="nav-link" data-menu="help" href="#">Help</a>
+            </li>
+            <!-- <li class="nav-item"><a class="nav-link" data-menu="help" href="#">Help</a></li> -->
+        </ul>
+    </div>
+
+    <!-- Toolbar (3D & Bo góc) -->
+    <div class="toolbar" id="toolbarContainer">
+        <button class="btn btn-primary me-2 py-1 px-2 btn-sm"><i class="fa fa-edit"></i> Compose</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-reply"></i> Reply</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-share"></i> Forward</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-trash"></i> Delete</button>
+    </div>
+
+    <!-- Sidebar Main (Sẽ thay đổi theo App được chọn) -->
+    <div class="sidebar-main" id="sidebarMain">
+        <!-- Nội dung khởi tạo cho ứng dụng Mail -->
+        <a href="#" class="active-sub"><i class="fa fa-inbox me-2"></i> Inbox</a>
+        <a href="#"><i class="fa fa-paper-plane me-2"></i> Sent</a>
+        <a href="#"><i class="fa fa-file me-2"></i> Drafts</a>
+        <a href="#"><i class="fa fa-trash me-2"></i> Trash</a>
+    </div>
+
+    <!-- Content Area (Sẽ thay đổi tương ứng) -->
+    <div class="content" id="contentArea">
+        <h4 id="contentTitle">Inbox</h4>
+        <div id="mainContent">
+            <div class="email-list">
+                <div class="email-item py-2 border-bottom">
+                    <strong>Nguyễn Văn A</strong> - Báo cáo tuần <span class="text-muted float-end">12/09</span>
+                </div>
+                <div class="email-item py-2 border-bottom">
+                    <strong>Phòng Nhân sự</strong> - Thông báo nghỉ lễ <span class="text-muted float-end">11/09</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle Sidebar Main
+        const toggleBtn = document.getElementById('toggleSidebar');
+        const sidebarMain = document.getElementById('sidebarMain');
+        const contentArea = document.getElementById('contentArea');
+
+        toggleBtn.addEventListener('click', () => {
+            sidebarMain.classList.toggle('hidden');
+            contentArea.classList.toggle('expanded');
+        });
+
+        // --- CẤU HÌNH DỮ LIỆU CHO 5 ỨNG DỤNG BÊN TRÁI ---
+        const appData = {
+            mail: {
+                title: 'Inbox',
+                sidebarHTML: `
+                    <a href="#" hx-get="/api/inbox" hx-target="#content-area" class="active-sub"><i class="fa fa-inbox me-2"></i> Inbox</a>
+                    <a href="#" hx-get="/api/sent" hx-target="#content-area"><i class="fa fa-paper-plane me-2"></i> Sent</a>
+                    <a href="#" hx-get="/api/drafts" hx-target="#content-area"><i class="fa fa-file me-2"></i> Drafts</a>
+                    <a href="#" hx-get="/api/trash" hx-target="#content-area"><i class="fa fa-trash me-2"></i> Trash</a>
+            `   ,
+                contentHTML: `
+                <div class="email-list">
+                    <div class="email-item py-2 border-bottom"><strong>Nguyễn Văn A</strong> - Báo cáo tuần <span class="text-muted float-end">12/09</span></div>
+                    <div class="email-item py-2 border-bottom"><strong>Phòng Nhân sự</strong> - Thông báo nghỉ lễ <span class="text-muted float-end">11/09</span></div>
+                </div>
+                `
+            },
+            calendar: {
+                title: 'Lịch làm việc',
+                sidebarHTML: `
+          <a href="#" class="active-sub"><i class="fa fa-calendar-day me-2"></i> Theo ngày</a>
+          <a href="#"><i class="fa fa-calendar-week me-2"></i> Theo tuần</a>
+          <a href="#"><i class="fa fa-calendar-alt me-2"></i> Theo tháng</a>
+        `,
+                contentHTML: `
+          <div class="p-3 bg-white border rounded">
+            <h5>Lịch trình hôm nay</h5>
+            <ul>
+              <li>09:00 - Họp giao ban đầu tuần</li>
+              <li>14:00 - Phỏng vấn ứng viên Dev</li>
+            </ul>
+          </div>
+        `
+            },
+            contacts: {
+                title: 'Danh bạ',
+                sidebarHTML: `
+          <a href="#" class="active-sub"><i class="fa fa-users me-2"></i> Tất cả danh bạ</a>
+          <a href="#"><i class="fa fa-star me-2"></i> Yêu thích</a>
+          <a href="#"><i class="fa fa-user-friends me-2"></i> Nhóm</a>
+        `,
+                contentHTML: `
+          <div class="row">
+            <div class="col-md-4 mb-2"><div class="p-3 border bg-white rounded"><i class="fa fa-user circle me-2"></i> Nguyễn Văn A (Dev)</div></div>
+            <div class="col-md-4 mb-2"><div class="p-3 border bg-white rounded"><i class="fa fa-user circle me-2"></i> Trần Thị B (HR)</div></div>
+          </div>
+        `
+            },
+            tasks: {
+                title: 'Nhiệm vụ',
+                sidebarHTML: `
+          <a href="#" class="active-sub"><i class="fa fa-tasks me-2"></i> Công việc của tôi</a>
+          <a href="#"><i class="fa fa-check-circle me-2"></i> Đã hoàn thành</a>
+        `,
+                contentHTML: `
+          <div class="list-group">
+            <label class="list-group-item"><input class="form-check-input me-1" type="checkbox"> Hoàn tất thiết kế giao diện Outlook</label>
+            <label class="list-group-item"><input class="form-check-input me-1" type="checkbox"> Gửi email báo cáo cho sếp</label>
+          </div>
+        `
+            },
+            settings: {
+                title: 'Cài đặt hệ thống',
+                sidebarHTML: `
+          <a href="#" class="active-sub"><i class="fa fa-sliders-h me-2"></i> Cấu hình chung</a>
+          <a href="#"><i class="fa fa-bell me-2"></i> Thông báo</a>
+          <a href="#"><i class="fa fa-lock me-2"></i> Quyền riêng tư</a>
+        `,
+                contentHTML: `
+          <div class="p-3 bg-white border rounded">
+            <p>Tùy chỉnh cấu hình tài khoản và ứng dụng của bạn tại đây.</p>
+          </div>
+        `
+            }
+        };
+
+        // --- LẮNG NGHE SỰ KIỆN CLICK VÀO 5 ICON SIDEBAR TRÁI ---
+        const iconLinks = document.querySelectorAll('.sidebar-icons a');
+        const contentTitle = document.getElementById('contentTitle');
+        const mainContent = document.getElementById('mainContent');
+
+        iconLinks.forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                // 1. Cập nhật trạng thái Active (vạch 2px ở mép trái)
+                iconLinks.forEach(i => i.classList.remove('active'));
+                icon.classList.add('active');
+
+                // 2. Thay đổi nội dung SidebarMain & Main Content theo App tương ứng
+                const appKey = icon.getAttribute('data-app');
+                if (appData[appKey]) {
+                    sidebarMain.innerHTML = appData[appKey].sidebarHTML;
+                    contentTitle.textContent = appData[appKey].title;
+                    mainContent.innerHTML = appData[appKey].contentHTML;
+                }
+            });
+        });
+
+        // --- CẤU HÌNH TOOLBAR THEO MENUBAR ---
+        const toolbarLayouts = {
+            file: `
+        <button class="btn btn-primary me-2 py-1 px-2 btn-sm"><i class="fa fa-edit"></i> Compose</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-reply"></i> Reply</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-share"></i> Forward</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-trash"></i> Delete</button>
+      `,
+            edit: `
+            <div class="dropdown d-inline-block me-2">
+                <button class="btn btn-primary py-1 px-2 btn-sm dropdown-toggle" type="button" id="dropdownNewItem" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa fa-plus me-1"></i> New Item
+                </button>
+                <ul class="dropdown-menu shadow-sm" aria-labelledby="dropdownNewItem">
+                <li><a class="dropdown-item fw-medium" href="#"><i class="far fa-file-word text-primary me-2"></i> New Document</a></li>
+                <li><a class="dropdown-item fw-medium" href="#"><i class="far fa-file-excel text-success me-2"></i> New Excel</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-java text-danger me-2"></i> New Java</a></li>
+                <!-- Sub-menu Others -->
+                <li><hr class="dropdown-divider"></li>
+                <!-- Sub-menu Others hỗ trợ cảm ứng -->
+                <li class="dropdown-submenu" id="submenuOthersContainer">
+                    <a class="dropdown-item fw-medium d-flex justify-content-between align-items-center" href="#" id="btnSubmenuOthers">
+                    <span><i class="fa fa-ellipsis-h me-2 text-muted"></i> Others</span>
+                    <i class="fa fa-chevron-right ms-2" style="font-size: 10px;"></i>
+                    </a>
+                    <ul class="dropdown-menu shadow-sm">
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-python text-warning me-2"></i> Python</a></li>
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-react text-info me-2"></i> Reactjs</a></li>
+                    <li><a class="dropdown-item fw-medium" href="#"><i class="fab fa-php me-2" style="color: #777bb4;"></i> PHP</a></li>
+                    </ul>
+                </li>
+                </ul>
+            </div>
+            <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-copy"></i> Copy</button>
+            <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-paste"></i> Paste</button>
+            `,
+            view: `
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-search-plus"></i> Zoom In</button>
+        <button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-sync"></i> Refresh</button>
+      `,
+            tools: `<button class="btn btn-light me-2 py-1 px-2 btn-sm border"><i class="fa fa-cog"></i> Options</button>`,
+            help: `<button class="btn btn-info text-white me-2 py-1 px-2 btn-sm"><i class="fa fa-question-circle"></i> Docs</button>`
+        };
+
+        const menuLinks = document.querySelectorAll('.menubar .nav-link');
+        const toolbarContainer = document.getElementById('toolbarContainer');
+
+        menuLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                menuLinks.forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+
+                const targetMenu = link.getAttribute('data-menu');
+                if (toolbarLayouts[targetMenu]) {
+                    toolbarContainer.innerHTML = toolbarLayouts[targetMenu];
+                }
+            });
+        });
+
+
+        // // Bắt sự kiện click chung cho sidebar-main
+        // document.addEventListener('click', function (e) {
+        //     // Kiểm tra nếu click vào thẻ <a> hoặc icon bên trong <a> của sidebar-main
+        //     const link = e.target.closest('.sidebar-main a');
+
+        //     if (link) {
+        //         e.preventDefault(); // Tránh bị nhảy trang
+
+        //         // 1. Tìm tất cả thẻ <a> trong sidebar và xóa class active-sub
+        //         const allLinks = document.querySelectorAll('.sidebar-main a');
+        //         allLinks.forEach(el => el.classList.remove('active-sub'));
+
+        //         // 2. Thêm active-sub cho item vừa click
+        //         link.classList.add('active-sub');
+
+        //         // 2. Log ra console kiểm tra thông tin
+        //         const menuName = link.innerText.trim();
+        //         const endpoint = link.getAttribute('hx-get');
+        //         console.log(`[Sidebar Click] Chọn menu: "${menuName}" | Endpoint HTMX: ${endpoint}`);
+        //     }
+        // });
+
+            //Gọi HTMX thủ công bằng JavaScript (htmx.ajax)
+        document.addEventListener('click', function (e) {
+            const link = e.target.closest('.sidebar-main a');
+            
+            if (link) {
+                e.preventDefault();
+
+                // 1. Highlight UI
+                const allLinks = document.querySelectorAll('.sidebar-main a');
+                allLinks.forEach(el => el.classList.remove('active-sub'));
+                link.classList.add('active-sub');
+
+                // 2. Lấy tên menu & tạo endpoint tương ứng
+                const menuName = link.innerText.trim();
+                const targetUrl = `/api/${menuName.toLowerCase()}`;
+
+                console.log(`[HTMX Call] Đang tải dữ liệu cho: ${menuName} từ URL: [${targetUrl}]`);
+
+                // 3. Gọi HTMX Ajax thủ công (Gửi request và nạp HTML vào thẻ .content)
+                if (window.htmx) {
+                    htmx.ajax('GET', targetUrl, { target: '.content', swap: 'innerHTML' });
+                } else {
+                    console.warn('Thư viện HTMX chưa được nạp!');
+                }
+            }
+            });
+
+        // Xử lý mở Submenu "Others" trên cả Điện thoại thực tế & DevTools Mobile Mode
+        document.addEventListener('DOMContentLoaded', function () {
+            const btnOthers = document.getElementById('btnSubmenuOthers');
+            const container = document.getElementById('submenuOthersContainer');
+
+            if (btnOthers && container) {
+                // Hàm toggle mở/tắt submenu
+                function toggleSubmenu(e) {
+                    e.preventDefault();
+                    e.stopPropagation(); // Ngăn đóng Menu Bootstrap cha
+                    container.classList.toggle('show');
+                }
+
+                // Lắng nghe sự kiện click/tap
+                btnOthers.addEventListener('click', toggleSubmenu);
+
+                // Đóng submenu khi nhấn ra ngoài
+                document.addEventListener('click', function (e) {
+                    if (!container.contains(e.target)) {
+                        container.classList.remove('show');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

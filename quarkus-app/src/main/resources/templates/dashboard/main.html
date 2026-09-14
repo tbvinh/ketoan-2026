@@ -1,0 +1,32 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+</head>
+<body>
+<div class="columns">
+  <!-- Sidebar -->
+  <div class="column is-one-quarter has-background-light">
+    <aside class="menu">
+      <p class="menu-label">Quản lý</p>
+      <ul class="menu-list">
+        <li><a hx-get="/dashboard/users" hx-target="#content">Người dùng</a></li>
+        <li><a hx-get="/dashboard/phieunhap" hx-target="#content">Phieu Nhap</a></li>
+        <li><a hx-get="/dashboard/reports" hx-target="#content">Báo cáo</a></li>
+        <li><a href="/logout" class="button is-light">Đăng xuất</a></li>
+      </ul>
+    </aside>
+  </div>
+
+  <!-- Content -->
+  <div class="column" id="content">
+    <h1 class="title">Chào mừng đến Dashboard</h1>
+    <p>Chọn menu bên trái để xem nội dung.</p>
+  </div>
+</div>
+</body>
+</html>

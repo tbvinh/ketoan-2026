@@ -1,0 +1,47 @@
+{#let activeMenu=(currentSubMenu ?: "file")}
+<div class="menubar ps-2">
+    <button id="toggleSidebar" class="btn btn-sm btn-light border me-2"><i class="fa fa-bars"></i></button>
+    <ul class="nav">
+        <li class="nav-item">
+            <a class="nav-link {activeMenu == 'file' ? 'active' : ''}" 
+               hx-get="/toolbar/file" 
+               hx-target="#toolbarContainer" 
+               hx-swap="innerHTML"
+               
+               href="#">File</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {activeMenu == 'edit' ? 'active' : ''}" 
+               hx-get="/toolbar/edit" 
+               hx-target="#toolbarContainer" 
+               hx-swap="innerHTML"
+               
+               href="#">Edit</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {activeMenu == 'view' ? 'active' : ''}" 
+               hx-get="/toolbar/view" 
+               hx-target="#toolbarContainer" 
+               hx-swap="innerHTML"
+               
+               href="#">View</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {activeMenu == 'tools' ? 'active' : ''}" 
+               hx-get="/toolbar/tools" 
+               hx-target="#toolbarContainer" 
+               hx-swap="innerHTML"
+               
+               href="#">Tools</a>
+        </li>
+        <li class="nav-item d-none d-sm-block">
+            <a class="nav-link {activeMenu == 'help' ? 'active' : ''}" 
+               hx-get="/toolbar/help" 
+               hx-target="#toolbarContainer" 
+               hx-swap="innerHTML"
+               
+               href="#">Help</a>
+        </li>
+    </ul>
+</div>
+{/let}

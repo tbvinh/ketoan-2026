@@ -1,0 +1,29 @@
+<div class="sidebar-icons" id="sidebarIcons">
+    <!-- Icon Mail -->
+    <a hx-get="/sidebar/mail" 
+       hx-target="#sidebarMainWrapper" 
+       hx-swap="innerHTML"
+       data-content-url="/mail/inbox"
+       class="active" 
+       title="Mail">
+        <i class="fa fa-envelope"></i>
+    </a>
+
+    <!-- Icon Calendar -->
+    <a hx-get="/sidebar/calendar" 
+       hx-target="#sidebarMainWrapper" 
+       hx-swap="innerHTML"
+       data-content-url="/calendar/month"
+       title="Calendar">
+        <i class="fa fa-calendar"></i>
+    </a>
+
+    <!-- Icon Tasks -->
+    <a hx-get="/sidebar/tasks" 
+       hx-target="#sidebarMainWrapper" 
+       hx-swap="innerHTML"
+       data-content-url="/tasks/my-day"
+       title="Tasks">
+        <i class="fa fa-tasks"></i>
+    </a>
+</div>

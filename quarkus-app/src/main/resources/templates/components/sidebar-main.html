@@ -1,0 +1,19 @@
+<div class="sidebar-main" id="sidebarMain">
+    <a href="/mail/inbox" 
+       hx-get="/mail/inbox" 
+       hx-target="#mainContent" 
+       hx-swap="innerHTML"
+       hx-push-url="false" 
+       class="{#if currentSubMenu == 'inbox' || currentSubMenu == null}active-sub{/if}">
+        <i class="fa fa-inbox me-2"></i> Inbox
+    </a>
+    
+    <a href="/mail/sent" 
+       hx-get="/mail/sent" 
+       hx-target="#mainContent" 
+       hx-swap="innerHTML"
+       hx-push-url="false" 
+       class="{#if currentSubMenu == 'sent'}active-sub{/if}">
+        <i class="fa fa-paper-plane me-2"></i> Sent
+    </a>
+</div>
