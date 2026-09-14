@@ -1,0 +1,22 @@
+FROM php:8.4-fpm
+
+RUN apt-get update && apt-get install -y \
+    git unzip curl \
+    libpng-dev libjpeg-dev libfreetype6-dev \
+    libonig-dev libxml2-dev libpq-dev \
+    libicu-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo_pgsql pdo mbstring exif pcntl bcmath gd intl
+
+RUN apt-get update && apt-get install -y \
+    libzip-dev \
+    && docker-php-ext-install zip
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+#RUN chown -R www-data:www-data /var/www/html \
+#    && chmod -R 755 /var/www/html/storage
+
+CMD ["php-fpm"]
