@@ -20,7 +20,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 use App\Filament\Pages\MyDashboard;
-
+use Filament\View\PanelsRenderHook;
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -32,8 +32,13 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->profile() // bật trang profile
             ->passwordReset() // cho phép đổi mật khẩu
-            ->navigation(true)
             
+            ->navigation(true)
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_NAV_START,
+                fn () => view('components.sidebar-filter')
+                
+            )
             ->colors([
                 'primary' => Color::Amber,
             ])
