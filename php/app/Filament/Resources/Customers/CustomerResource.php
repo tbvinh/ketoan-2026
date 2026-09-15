@@ -17,6 +17,7 @@ use UnitEnum;
 class CustomerResource extends Resource
 {
     protected static UnitEnum|string|null $navigationGroup = 'Hệ thống';
+    protected static ?string $navigationLabel = 'Quản lý Người dùng';
     
     protected static ?string $model = Customer::class;
 

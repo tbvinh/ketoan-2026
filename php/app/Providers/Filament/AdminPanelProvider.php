@@ -21,6 +21,9 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 use App\Filament\Pages\MyDashboard;
 use Filament\View\PanelsRenderHook;
+
+use Filament\Navigation\NavigationGroup;
+
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
@@ -42,6 +45,14 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Amber,
             ])
+
+            ->navigationGroups([
+                NavigationGroup::make('Hệ thống')
+                    ->collapsible(true),
+                NavigationGroup::make('Cài đặt')
+                    ->collapsed(true),
+            ])
+
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
