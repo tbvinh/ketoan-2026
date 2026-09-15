@@ -35,7 +35,10 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->profile() // bật trang profile
             ->passwordReset() // cho phép đổi mật khẩu
-            
+            // Sửa chữ tên thương hiệu / logo hiển thị tại đây:
+            ->brandName('MyHome')
+            ->brandLogo(asset('images/logo.svg'))
+            ->brandLogoHeight('2.5rem')
             ->navigation(true)
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_NAV_START,
