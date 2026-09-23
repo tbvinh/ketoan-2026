@@ -13,8 +13,8 @@ import jakarta.ws.rs.core.Response;
 @Path("/dashboard")
 public class DashboardResource {
 
-    @Inject
-    SecurityIdentity identity;
+//    @Inject
+//    SecurityIdentity identity;
     @Inject
     @Location("dashboard/main.html")
     Template dashboard_main; // ánh xạ tới templates/dashboard/main.html
@@ -23,8 +23,8 @@ public class DashboardResource {
     @Produces("text/html; charset=UTF-8")
 //    @RolesAllowed("user")
     public Response showDashboard() {
-        System.out.println("Principal: " + identity.getPrincipal().getName());
-        System.out.println("Roles: " + identity.getRoles());
+//        System.out.println("Principal: " + identity.getPrincipal().getName());
+//        System.out.println("Roles: " + identity.getRoles());
 
 //        return dashboard_main.instance();
         return Response.ok(dashboard_main.instance())

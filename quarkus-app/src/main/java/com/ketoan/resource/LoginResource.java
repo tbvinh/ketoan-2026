@@ -11,7 +11,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
 
-import io.smallrye.jwt.build.Jwt;
+//import io.smallrye.jwt.build.Jwt;
 
 @Path("/login")
 public class LoginResource {
@@ -31,12 +31,13 @@ public class LoginResource {
     public Response doLogin(@FormParam("username") String user,
             @FormParam("password") String pass) {
         if ("admin".equals(user) && "123".equals(pass)) {
-            String token = Jwt.issuer("ketoan-app")
-                    .upn(user)
-                    //                    .claim("roles", Arrays.asList("user"))
-                    .groups("user")
-                    .expiresAt(System.currentTimeMillis() / 1000 + 3600) // sống 1h   
-                    .signWithSecret("mysuperlongsecretkeyforhs256jwt1234567890"); // HS256 ký bằng secret
+            String token = "xx";
+//                    Jwt.issuer("ketoan-app")
+//                    .upn(user)
+//                    //                    .claim("roles", Arrays.asList("user"))
+//                    .groups("user")
+//                    .expiresAt(System.currentTimeMillis() / 1000 + 3600) // sống 1h   
+//                    .signWithSecret("mysuperlongsecretkeyforhs256jwt1234567890"); // HS256 ký bằng secret
 
             // Trả token về client, HTMX có thể lưu vào localStorage hoặc cookie
             //return Response.ok("<script>localStorage.setItem('jwt','" + token + "'); window.location.href='/dashboard';</script>").build();
