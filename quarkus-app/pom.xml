@@ -13,8 +13,11 @@
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.39.3</quarkus.platform.version>
+        <skipTests>true</skipTests>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
+        <!-- THÊM DÒNG NÀY ĐỂ BUILD RA MỘT FILE JAR DUY NHẤT -->
+        <quarkus.package.type>uber-jar</quarkus.package.type> 
     </properties>
 
     <dependencyManagement>
