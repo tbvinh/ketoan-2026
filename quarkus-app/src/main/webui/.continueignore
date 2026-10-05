@@ -1,0 +1,26 @@
+# Thư viện bên thứ 3 (QUAN TRỌNG NHẤT - Phải bỏ qua)
+node_modules/
+.pnpm-store/
+package-lock.json
+yarn.lock
+
+# Thư mục build / xuất bản
+dist/
+build/
+.next/
+
+# File chứa bí mật & cấu hình môi trường
+.env
+.env.*
+*.pem
+*.key
+
+# File Log & Cache
+*.log
+.cache/
+coverage/
+
+# Cấu hình IDE & Git
+.git/
+.vscode/
+.idea/
