@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { fakeApi } from '../../core/api.js';
 import { useI18n } from '../../core/i18n.jsx';
 import { Loading } from '../../core/ui.jsx';
@@ -52,6 +52,8 @@ const messages = {
     'inv.range': 'Hiển thị {from}–{to} / {total}', 'inv.dateFrom': 'Từ ngày', 'inv.dateTo': 'Đến ngày',
     'inv.perPage': 'Dòng/trang', 'inv.pageOf': 'Trang {p} / {n}', 'inv.first': 'Trang đầu', 'inv.prev': 'Trang trước', 'inv.next': 'Trang sau', 'inv.last': 'Trang cuối',
     'inv.confirmDeleteLine': 'Bạn có chắc muốn xóa dòng "{name}"?',
+    'inv.master': 'Thông tin chung', 'inv.collapse': 'Thu gọn', 'inv.expand': 'Mở rộng',
+    'inv.moveUp': 'Chuyển lên', 'inv.moveDown': 'Chuyển xuống', 'inv.drag': 'Kéo để đổi thứ tự',
     'inv.edit': 'Sửa', 'inv.deleteRow': 'Xóa', 'inv.confirmDelete': 'Bạn có chắc muốn xóa phiếu "{name}"? Thao tác này không thể hoàn tác.' },
   en: { 'inv.title': 'Inventory', 'inv.filters': 'Type', 'inv.all': 'All', 'inv.import': 'Stock in', 'inv.export': 'Stock out', 'inv.return': 'Return',
     'inv.no': 'No.', 'inv.type': 'Type', 'inv.partner': 'Partner', 'inv.supplier': 'Supplier', 'inv.customer': 'Customer',
@@ -64,6 +66,8 @@ const messages = {
     'inv.range': 'Showing {from}–{to} of {total}', 'inv.dateFrom': 'From date', 'inv.dateTo': 'To date',
     'inv.perPage': 'Rows/page', 'inv.pageOf': 'Page {p} / {n}', 'inv.first': 'First page', 'inv.prev': 'Previous page', 'inv.next': 'Next page', 'inv.last': 'Last page',
     'inv.confirmDeleteLine': 'Are you sure you want to delete line "{name}"?',
+    'inv.master': 'General info', 'inv.collapse': 'Collapse', 'inv.expand': 'Expand',
+    'inv.moveUp': 'Move up', 'inv.moveDown': 'Move down', 'inv.drag': 'Drag to reorder',
     'inv.edit': 'Edit', 'inv.deleteRow': 'Delete', 'inv.confirmDelete': 'Are you sure you want to delete document "{name}"? This cannot be undone.' },
 };
 
@@ -106,6 +110,21 @@ function applyView(docs, { filterType, q, filters, sort }) {
   }
   return list;
 }
+
+/* ---------- CSS riêng của plugin (có thể chuyển sang file style chung) ---------- */
+
+const CSS = `
+.invtable.zebra tbody tr:nth-child(even) { background: rgba(128,128,128,.09); }
+.invtable.zebra tbody tr:hover { background: rgba(15,108,189,.10); }
+.masterhead { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+.mastersum { font-size: 13px; color: var(--muted, #667085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.draghandle { cursor: grab; user-select: none; padding: 0 6px; color: var(--muted, #667085); }
+.draghandle:active { cursor: grabbing; }
+.invtable tr.dragging { opacity: .4; }
+.invtable tr.dropbefore td { box-shadow: inset 0 2px 0 var(--accent, #0f6cbd); }
+.invtable tr.dropafter td { box-shadow: inset 0 -2px 0 var(--accent, #0f6cbd); }
+.lineacts { white-space: nowrap; }
+`;
 
 /* ---------- Giao diện ---------- */
 
@@ -223,7 +242,7 @@ function ListView({ state, setState, docs, can, t }) {
 
       <Toolbar state={state} setState={setState} t={t} countLabel={countLabel} />
 
-      <table className="invtable">
+      <table className="invtable zebra">
         <thead>
           <tr>
             {cols.map((c) => {
@@ -291,6 +310,19 @@ function FormView({ state, setState, can, t }) {
   };
   const total = lineTotal(editing.lines);
 
+  const [masterOpen, setMasterOpen] = useState(true);   // thu gọn master để detail hiển thị nhiều dòng hơn
+  const [drag, setDrag] = useState({ from: null, over: null });
+  // Đổi thứ tự dòng: dùng chung cho kéo thả và nút ▲▼
+  const moveLine = (from, to) => {
+    if (from == null || to == null || from === to || to < 0 || to >= editing.lines.length) return;
+    const next = [...editing.lines];
+    const [m] = next.splice(from, 1);
+    next.splice(to, 0, m);
+    update({ lines: next });
+  };
+  const endDrag = () => setDrag({ from: null, over: null });
+  const summary = [t('inv.' + editing.type), editing.partner?.name, editing.bank?.name, editing.date, editing.note].filter(Boolean).join(' · ');
+
   const doSave = () => {
     const linesOk = editing.lines.every((l) => l.product?.id != null && l.qty > 0);
     if (!editing.partner || !editing.lines.length || !linesOk) { alert(t('inv.validate')); return; }
@@ -314,7 +346,14 @@ function FormView({ state, setState, can, t }) {
         <button className="tb" onClick={() => setState({ mode: 'list', editing: null })}>← {t('inv.back')}</button>
       </div>
 
-      <div className="invmaster">
+      <div className="masterhead">
+        <button type="button" className="tb" aria-expanded={masterOpen} onClick={() => setMasterOpen((v) => !v)}>
+          {masterOpen ? '▾' : '▸'} {t('inv.master')}
+        </button>
+        {!masterOpen && <span className="mastersum">{summary}</span>}
+      </div>
+
+      {masterOpen && <div className="invmaster">
         <label>{t('inv.type')}
           <select value={editing.type} disabled={!isNew} onChange={(e) => update({ type: e.target.value, partner: null })}>
             <option value="import">{t('inv.import')}</option>
@@ -332,24 +371,44 @@ function FormView({ state, setState, can, t }) {
         </label>
         <label>{t('inv.date')}<input type="date" value={editing.date} onChange={(e) => update({ date: e.target.value })} /></label>
         <label>{t('inv.note')}<input value={editing.note} onChange={(e) => update({ note: e.target.value })} /></label>
-      </div>
+      </div>}
 
       <h3>{t('inv.lines')}</h3>
-      <table className="invtable">
-        <thead><tr><th>{t('inv.product')}</th><th>{t('inv.qty')}</th><th>{t('inv.price')}</th><th>{t('inv.lineTotal')}</th><th /></tr></thead>
+      <table className="invtable zebra">
+        <thead><tr><th /><th>{t('inv.product')}</th><th>{t('inv.qty')}</th><th>{t('inv.price')}</th><th>{t('inv.lineTotal')}</th><th /></tr></thead>
         <tbody>
-          {editing.lines.map((l) => (
-            <tr key={l.id}>
-              <td><Autocomplete value={l.product} onChange={(p) => updateLine(l.id, { product: p, price: p?.price ?? l.price })} fetcher={searchMaterials} placeholder={t('inv.searchProduct')}
-                onCreate={createMaterial} createLabel={t('ac.create') + ' ' + t('inv.newMaterial')} /></td>
-              <td><input type="number" min="1" className="qty" value={l.qty} onChange={(e) => updateLine(l.id, { qty: +e.target.value || 0 })} /></td>
-              <td><input type="number" min="0" className="qty" value={l.price} onChange={(e) => updateLine(l.id, { price: +e.target.value || 0 })} /></td>
-              <td>{vnd(l.qty * l.price)}</td>
-              <td><button className="xbtn" title={t('inv.deleteRow')} aria-label={t('inv.deleteRow')} onClick={() => removeLine(l)}>🗑</button></td>
-            </tr>
-          ))}
+          {editing.lines.map((l, i) => {
+            const dropCls = drag.from !== null && drag.over === i && drag.from !== i ? (drag.from < i ? ' dropafter' : ' dropbefore') : '';
+            return (
+              <tr key={l.id} className={(drag.from === i ? 'dragging' : '') + dropCls}
+                onDragOver={(e) => { if (drag.from === null) return; e.preventDefault(); if (drag.over !== i) setDrag((d) => ({ ...d, over: i })); }}
+                onDrop={(e) => { e.preventDefault(); moveLine(drag.from, i); endDrag(); }}>
+                <td>
+                  <span className="draghandle" draggable title={t('inv.drag')} aria-label={t('inv.drag')}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(l.id));
+                      const tr = e.currentTarget.closest('tr');
+                      if (tr) e.dataTransfer.setDragImage(tr, 10, 10);
+                      setDrag({ from: i, over: i });
+                    }}
+                    onDragEnd={endDrag}>⠿</span>
+                </td>
+                <td><Autocomplete value={l.product} onChange={(p) => updateLine(l.id, { product: p, price: p?.price ?? l.price })} fetcher={searchMaterials} placeholder={t('inv.searchProduct')}
+                  onCreate={createMaterial} createLabel={t('ac.create') + ' ' + t('inv.newMaterial')} /></td>
+                <td><input type="number" min="1" className="qty" value={l.qty} onChange={(e) => updateLine(l.id, { qty: +e.target.value || 0 })} /></td>
+                <td><input type="number" min="0" className="qty" value={l.price} onChange={(e) => updateLine(l.id, { price: +e.target.value || 0 })} /></td>
+                <td>{vnd(l.qty * l.price)}</td>
+                <td className="lineacts">
+                  <button type="button" className="xbtn" title={t('inv.moveUp')} aria-label={t('inv.moveUp')} disabled={i === 0} onClick={() => moveLine(i, i - 1)}>▲</button>
+                  <button type="button" className="xbtn" title={t('inv.moveDown')} aria-label={t('inv.moveDown')} disabled={i === editing.lines.length - 1} onClick={() => moveLine(i, i + 1)}>▼</button>
+                  <button type="button" className="xbtn" title={t('inv.deleteRow')} aria-label={t('inv.deleteRow')} onClick={() => removeLine(l)}>🗑</button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
-        <tfoot><tr><td colSpan={3} style={{ textAlign: 'right' }}><b>{t('inv.grandTotal')}</b></td><td colSpan={2}><b>{vnd(total)}</b></td></tr></tfoot>
+        <tfoot><tr><td colSpan={4} style={{ textAlign: 'right' }}><b>{t('inv.grandTotal')}</b></td><td colSpan={2}><b>{vnd(total)}</b></td></tr></tfoot>
       </table>
       <button className="tb" onClick={addLine}>➕ {t('inv.addLine')}</button>
 
@@ -367,9 +426,12 @@ function Body(props) {
   const { t } = useI18n();
   const { docs, loading } = useDocs();
   if (loading) return <Loading />;
-  return state.mode === 'form' && state.editing
-    ? <FormView {...props} t={t} />
-    : <ListView {...props} docs={docs} t={t} />;
+  return (<>
+    <style>{CSS}</style>
+    {state.mode === 'form' && state.editing
+      ? <FormView {...props} t={t} />
+      : <ListView {...props} docs={docs} t={t} />}
+  </>);
 }
 
 function View(props) {
