@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { fakeApi } from '../../core/api.js';
 import { useI18n } from '../../core/i18n.jsx';
 import { Loading } from '../../core/ui.jsx';
@@ -29,19 +29,31 @@ const subs = new Set();
 const set = (p) => { st = { ...st, ...p }; subs.forEach((f) => f()); };
 const useDocs = () => useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => st);
 function load() { set({ loading: true }); fakeApi(SEED_DOCS, 600).then((docs) => set({ docs, loading: false })); }
+let idSeq = Date.now();
+const nextId = () => ++idSeq;   // Date.now() có thể trùng khi import nhiều phiếu trong cùng 1 ms
 function saveDoc(doc) {
   if (doc.id) { set({ docs: st.docs.map((d) => (d.id === doc.id ? doc : d)) }); return; }
   const count = st.docs.filter((d) => d.type === doc.type).length + 1;
   const no = PREFIX[doc.type] + String(count).padStart(4, '0');
-  set({ docs: [{ ...doc, id: Date.now(), no }, ...st.docs] });
+  set({ docs: [{ ...doc, id: nextId(), no }, ...st.docs] });
 }
 function removeDoc(id) { set({ docs: st.docs.filter((d) => d.id !== id) }); }
+function removeDocs(ids) { const gone = new Set(ids); set({ docs: st.docs.filter((d) => !gone.has(d.id)) }); }
 const search = (q) => fakeApi(
   st.docs.filter((d) => (d.no + ' ' + (d.partner?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
     .map((d) => ({ id: d.id, title: d.no, subtitle: d.partner?.name ?? d.type, state: { mode: 'form', editing: d } })), 500);
 
 const messages = {
-  vi: { 'inv.title': 'Nhập xuất kho', 'inv.filters': 'Loại phiếu', 'inv.all': 'Tất cả', 'inv.import': 'Nhập kho', 'inv.export': 'Xuất kho', 'inv.return': 'Trả hàng',
+  vi: { 'inv.importFile': 'Import', 'inv.importTitle': 'Import phiếu từ file CSV', 'inv.importTemplate': 'Tải file mẫu', 'inv.close': 'Đóng',
+    'inv.importHint': 'File CSV (UTF-8, phân tách bằng , hoặc ;). Mỗi dòng là 1 dòng hàng; các dòng cùng cột "ref" thuộc cùng 1 phiếu. Cột bắt buộc: type (import/export/return), partner, product, qty. Đối tác/sản phẩm/ngân hàng chưa có sẽ được tạo mới trong Danh mục nếu bạn có quyền.',
+    'inv.importBusy': 'Đang import…', 'inv.importDone': 'Đã import {n} phiếu.', 'inv.importErrors': '{n} lỗi (các phiếu lỗi được bỏ qua):',
+    'inv.errEmpty': 'File trống', 'inv.errRead': 'Không đọc được file', 'inv.errHeader': 'File thiếu cột bắt buộc: {cols}',
+    'inv.errLine': 'Dòng {line}: {msg}', 'inv.errType': 'Loại phiếu không hợp lệ (import/export/return)', 'inv.errPartner': 'Thiếu đối tác',
+    'inv.errDate': 'Ngày không hợp lệ (YYYY-MM-DD hoặc DD/MM/YYYY)', 'inv.errProduct': 'Thiếu sản phẩm', 'inv.errQty': 'Số lượng phải lớn hơn 0',
+    'inv.errPrice': 'Đơn giá không hợp lệ', 'inv.errNotFound': 'Không tìm thấy "{name}" trong Danh mục',
+    'inv.selectAll': 'Chọn tất cả trên trang', 'inv.selectRow': 'Chọn phiếu', 'inv.selected': 'Đã chọn {n} phiếu', 'inv.selectAllResults': 'Chọn tất cả {n} phiếu',
+    'inv.clearSel': 'Bỏ chọn', 'inv.deleteSelected': 'Xóa đã chọn', 'inv.confirmBulkDelete': 'Bạn có chắc muốn xóa {n} phiếu đã chọn? Thao tác này không thể hoàn tác.',
+    'inv.title': 'Nhập xuất kho', 'inv.filters': 'Loại phiếu', 'inv.all': 'Tất cả', 'inv.import': 'Nhập kho', 'inv.export': 'Xuất kho', 'inv.return': 'Trả hàng',
     'inv.no': 'Số phiếu', 'inv.type': 'Loại phiếu', 'inv.partner': 'Đối tác', 'inv.supplier': 'Nhà cung cấp', 'inv.customer': 'Khách hàng',
     'inv.date': 'Ngày', 'inv.note': 'Ghi chú', 'inv.lines': 'Chi tiết hàng hóa', 'inv.product': 'Sản phẩm', 'inv.qty': 'Số lượng', 'inv.price': 'Đơn giá',
     'inv.lineTotal': 'Thành tiền', 'inv.grandTotal': 'Tổng cộng', 'inv.addLine': 'Thêm dòng', 'inv.save': 'Lưu phiếu', 'inv.delete': 'Xóa phiếu',
@@ -55,7 +67,16 @@ const messages = {
     'inv.master': 'Thông tin chung', 'inv.collapse': 'Thu gọn', 'inv.expand': 'Mở rộng',
     'inv.moveUp': 'Chuyển lên', 'inv.moveDown': 'Chuyển xuống', 'inv.drag': 'Kéo để đổi thứ tự',
     'inv.edit': 'Sửa', 'inv.deleteRow': 'Xóa', 'inv.confirmDelete': 'Bạn có chắc muốn xóa phiếu "{name}"? Thao tác này không thể hoàn tác.' },
-  en: { 'inv.title': 'Inventory', 'inv.filters': 'Type', 'inv.all': 'All', 'inv.import': 'Stock in', 'inv.export': 'Stock out', 'inv.return': 'Return',
+  en: { 'inv.importFile': 'Import', 'inv.importTitle': 'Import documents from CSV', 'inv.importTemplate': 'Download template', 'inv.close': 'Close',
+    'inv.importHint': 'CSV file (UTF-8, separated by , or ;). Each row is one line item; rows sharing the same "ref" belong to one document. Required columns: type (import/export/return), partner, product, qty. Missing partners/products/banks are created in Master Data if you have permission.',
+    'inv.importBusy': 'Importing…', 'inv.importDone': 'Imported {n} documents.', 'inv.importErrors': '{n} errors (failed documents were skipped):',
+    'inv.errEmpty': 'File is empty', 'inv.errRead': 'Could not read file', 'inv.errHeader': 'Missing required columns: {cols}',
+    'inv.errLine': 'Row {line}: {msg}', 'inv.errType': 'Invalid type (import/export/return)', 'inv.errPartner': 'Partner is missing',
+    'inv.errDate': 'Invalid date (YYYY-MM-DD or DD/MM/YYYY)', 'inv.errProduct': 'Product is missing', 'inv.errQty': 'Qty must be greater than 0',
+    'inv.errPrice': 'Invalid unit price', 'inv.errNotFound': '"{name}" was not found in Master Data',
+    'inv.selectAll': 'Select all on this page', 'inv.selectRow': 'Select document', 'inv.selected': '{n} selected', 'inv.selectAllResults': 'Select all {n} documents',
+    'inv.clearSel': 'Clear selection', 'inv.deleteSelected': 'Delete selected', 'inv.confirmBulkDelete': 'Are you sure you want to delete {n} selected documents? This cannot be undone.',
+    'inv.title': 'Inventory', 'inv.filters': 'Type', 'inv.all': 'All', 'inv.import': 'Stock in', 'inv.export': 'Stock out', 'inv.return': 'Return',
     'inv.no': 'No.', 'inv.type': 'Type', 'inv.partner': 'Partner', 'inv.supplier': 'Supplier', 'inv.customer': 'Customer',
     'inv.date': 'Date', 'inv.note': 'Note', 'inv.lines': 'Line items', 'inv.product': 'Product', 'inv.qty': 'Qty', 'inv.price': 'Unit price',
     'inv.lineTotal': 'Line total', 'inv.grandTotal': 'Grand total', 'inv.addLine': 'Add line', 'inv.save': 'Save', 'inv.delete': 'Delete document',
@@ -124,6 +145,15 @@ const CSS = `
 .invtable tr.dropbefore td { box-shadow: inset 0 2px 0 var(--accent, #0f6cbd); }
 .invtable tr.dropafter td { box-shadow: inset 0 -2px 0 var(--accent, #0f6cbd); }
 .lineacts { white-space: nowrap; }
+.selcol { width: 32px; text-align: center; }
+.invtable tr.sel td { background: rgba(15,108,189,.16); }
+.bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 12px; border-radius: 6px; background: rgba(15,108,189,.12); }
+.importbox { margin: 8px 0 12px; padding: 12px 14px; border: 1px dashed var(--border, #d0d5dd); border-radius: 8px; }
+.importhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.importhint { margin: 0 0 10px; font-size: 12.5px; color: var(--muted, #667085); }
+.importacts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.importres { margin-top: 10px; font-size: 13px; }
+.importerr { margin: 6px 0 0; padding-left: 18px; color: #b42318; max-height: 160px; overflow: auto; }
 `;
 
 /* ---------- Giao diện ---------- */
@@ -145,8 +175,170 @@ const ribbon = ({ setState, can }) => ({
     { id: 'new-import', icon: '📥', label: 'inv.newImport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('import') }) },
     { id: 'new-export', icon: '📤', label: 'inv.newExport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('export') }) },
     { id: 'new-return', icon: '↩️', label: 'inv.newReturn', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('return') }) },
+    { id: 'import-file', icon: '📂', label: 'inv.importFile', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'list', editing: null, importing: true }) },
   ] }] }],
 });
+
+/* ---------- Import CSV ---------- */
+
+const norm = (s) => (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'd').replace(/\s+/g, ' ').toLowerCase().trim();
+
+const IMPORT_COLS = ['ref', 'type', 'partner', 'date', 'note', 'bank', 'product', 'qty', 'price'];
+const IMPORT_REQUIRED = ['type', 'partner', 'product', 'qty'];
+const TEMPLATE_CSV = [
+  'ref,type,partner,date,note,bank,product,qty,price',
+  'A1,import,NCC Phong Vũ,2026-10-01,Nhập đợt 1,,Bàn phím cơ,10,700000',
+  'A1,import,NCC Phong Vũ,2026-10-01,Nhập đợt 1,,Chuột không dây,20,220000',
+  'B1,export,Công ty TNHH ABC,2026-10-02,Giao tận nơi,,RAM 16GB,5,900000',
+].join('\r\n');
+
+function downloadTemplate() {
+  const blob = new Blob(['\uFEFF' + TEMPLATE_CSV], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'inventory-import-template.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Parser CSV nhỏ: hỗ trợ dấu ngoặc kép, dấu phân cách , hoặc ; (Excel tiếng Việt hay xuất ;)
+function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const first = text.split(/\r?\n/, 1)[0];
+  const delim = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+const parseNum = (v) => {
+  const x = String(v ?? '').trim().replace(/\s/g, '');
+  if (x === '') return NaN;
+  return Number(/^\d{1,3}([.,]\d{3})+$/.test(x) ? x.replace(/[.,]/g, '') : x.replace(',', '.'));   // 700.000 -> 700000
+};
+const parseDate = (v) => {
+  const x = (v ?? '').trim();
+  if (!x) return today();
+  let m = x.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) { const d = x.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if (d) m = [x, d[3], d[2].padStart(2, '0'), d[1].padStart(2, '0')]; }
+  if (!m) return null;
+  const iso = m[1] + '-' + m[2] + '-' + m[3];
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
+};
+
+// Trả về { ok, errors }. Phiếu có lỗi bị bỏ qua, các phiếu hợp lệ vẫn được lưu.
+async function importDocs(text, { can, t }) {
+  const rows = parseCsv(text);
+  if (!rows.length) return { ok: 0, errors: [t('inv.errEmpty')] };
+  const head = rows[0].map((h) => norm(h));
+  const idx = Object.fromEntries(IMPORT_COLS.map((c) => [c, head.indexOf(c)]));
+  const missing = IMPORT_REQUIRED.filter((c) => idx[c] < 0);
+  if (missing.length) return { ok: 0, errors: [t('inv.errHeader').replace('{cols}', missing.join(', '))] };
+  const cell = (r, c) => (idx[c] >= 0 ? (r[idx[c]] ?? '').trim() : '');
+
+  // Gom các dòng cùng "ref" thành 1 phiếu (ref trống = mỗi dòng 1 phiếu); thông tin phiếu lấy ở dòng đầu
+  const groups = [];
+  const byRef = new Map();
+  rows.slice(1).forEach((r, i) => {
+    const line = i + 2;
+    const ref = cell(r, 'ref');
+    let g = ref ? byRef.get(ref) : null;
+    if (!g) { g = { line, r, rows: [] }; groups.push(g); if (ref) byRef.set(ref, g); }
+    g.rows.push({ line, r });
+  });
+
+  // Tìm bản ghi trong Danh mục theo tên (không phân biệt dấu/hoa thường); chưa có thì tạo nếu được phép
+  const canCreate = can('catalog', 'create');
+  const cache = new Map();
+  const resolve = async (kind, name, fetcher, add) => {
+    const key = kind + '|' + norm(name);
+    if (cache.has(key)) return cache.get(key);
+    const hit = (await fetcher(name)).find((x) => norm(x.name) === norm(name));
+    const v = hit ?? (canCreate ? await add(name) : null);
+    cache.set(key, v);
+    return v;
+  };
+  const simpleAdd = (store) => async (name) => { const c = await store.add({ name }); return { id: c.id, name: c.name }; };
+  const partnerRes = (type, name) => (type === 'import'
+    ? resolve('s', name, searchSuppliers, simpleAdd(suppliersStore))
+    : resolve('c', name, searchCustomers, simpleAdd(customersStore)));
+  const bankRes = (name) => resolve('b', name, searchBanks, simpleAdd(banksStore));
+  const productRes = (name) => resolve('p', name, searchMaterials, async (n) => {
+    const m = await materialsStore.add({ name: n, unit: 'cái', price: 0, typeId: null });
+    return { id: m.id, name: m.name, price: 0 };
+  });
+
+  const errors = [];
+  let ok = 0;
+  const err = (line, msg) => errors.push(t('inv.errLine').replace('{line}', line).replace('{msg}', msg));
+  const notFound = (name) => t('inv.errNotFound').replace('{name}', name);
+
+  for (const g of groups) {
+    const type = cell(g.r, 'type').toLowerCase();
+    if (!PREFIX[type]) { err(g.line, t('inv.errType')); continue; }
+    const partnerName = cell(g.r, 'partner');
+    if (!partnerName) { err(g.line, t('inv.errPartner')); continue; }
+    const date = parseDate(cell(g.r, 'date'));
+    if (!date) { err(g.line, t('inv.errDate')); continue; }
+
+    // Kiểm tra dữ liệu từng dòng hàng trước khi đụng tới Danh mục (tránh tạo bản ghi mồ côi)
+    const specs = [];
+    let bad = false;
+    for (const { line, r } of g.rows) {
+      const pname = cell(r, 'product');
+      const qty = parseNum(cell(r, 'qty'));
+      const priceRaw = cell(r, 'price');
+      const price = priceRaw === '' ? null : parseNum(priceRaw);
+      if (!pname) { err(line, t('inv.errProduct')); bad = true; break; }
+      if (!(qty > 0)) { err(line, t('inv.errQty')); bad = true; break; }
+      if (price !== null && !(price >= 0)) { err(line, t('inv.errPrice')); bad = true; break; }
+      specs.push({ pname, qty, price });
+    }
+    if (bad) continue;
+
+    const partner = await partnerRes(type, partnerName);
+    if (!partner) { err(g.line, notFound(partnerName)); continue; }
+    const bankName = cell(g.r, 'bank');
+    const bank = bankName ? await bankRes(bankName) : null;
+    if (bankName && !bank) { err(g.line, notFound(bankName)); continue; }
+
+    const lines = [];
+    for (const sp of specs) {
+      const product = await productRes(sp.pname);
+      if (!product) { err(g.line, notFound(sp.pname)); bad = true; break; }
+      lines.push({ id: nextId(), product: { id: product.id, name: product.name, price: product.price }, qty: sp.qty, price: sp.price ?? product.price ?? 0 });
+    }
+    if (bad) continue;
+
+    saveDoc({
+      type, partner: { id: partner.id, name: partner.name }, bank: bank ? { id: bank.id, name: bank.name } : null,
+      date, note: cell(g.r, 'note'), lines,
+    });
+    ok++;
+  }
+  return { ok, errors };
+}
+
+// Checkbox "chọn tất cả" có trạng thái lưng chừng (indeterminate)
+function HeaderCheck({ checked, indeterminate, onChange, label }) {
+  const ref = useRef(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = !!indeterminate && !checked; }, [indeterminate, checked]);
+  return <input ref={ref} type="checkbox" checked={checked} onChange={onChange} aria-label={label} title={label} />;
+}
 
 function Toolbar({ state, setState, t, countLabel }) {
   const q = state.q ?? '';
@@ -200,6 +392,7 @@ function Pager({ page, totalPages, pageSize, setState, t }) {
 
 function ListView({ state, setState, docs, can, t }) {
   const confirm = useConfirm();
+  const [imp, setImp] = useState({ busy: false, result: null, key: 0 });
   const q = state.q ?? '';
   const filters = state.filters ?? NO_FILTERS;
   const sort = state.sort ?? null;
@@ -228,6 +421,38 @@ function ListView({ state, setState, docs, can, t }) {
     removeDoc(d.id);
   };
 
+  // ----- Chọn nhiều + xóa hàng loạt -----
+  // Chỉ tính các phiếu đang hiển thị theo bộ lọc hiện tại, để không lỡ xóa phiếu đang bị ẩn
+  const canDelete = can('inventory', 'delete');
+  const selSet = new Set(state.selected ?? []);
+  const selected = all.filter((d) => selSet.has(d.id));
+  const pageAllSelected = items.length > 0 && items.every((d) => selSet.has(d.id));
+  const pageSomeSelected = items.some((d) => selSet.has(d.id));
+  const setSel = (ids) => setState({ selected: ids }, { replace: true });
+  const toggleOne = (id) => setSel(selSet.has(id) ? [...selSet].filter((x) => x !== id) : [...selSet, id]);
+  const togglePage = () => {
+    const ids = items.map((d) => d.id);
+    setSel(pageAllSelected ? [...selSet].filter((x) => !ids.includes(x)) : [...new Set([...selSet, ...ids])]);
+  };
+  const onBulkDelete = async () => {
+    if (!selected.length) return;
+    if (!(await confirm(t('inv.confirmBulkDelete').replace('{n}', selected.length)))) return;
+    removeDocs(selected.map((d) => d.id));
+    setSel([]);
+  };
+
+  // ----- Import -----
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImp((s) => ({ ...s, busy: true, result: null }));
+    let result;
+    try { result = await importDocs(await file.text(), { can, t }); }
+    catch (err) { result = { ok: 0, errors: [t('inv.errRead') + ': ' + (err?.message ?? err)] }; }
+    setImp((s) => ({ busy: false, result, key: s.key + 1 }));   // đổi key để chọn lại cùng 1 file vẫn chạy
+    if (result.ok) setState({ filterType: 'all', ...EMPTY_VIEW }, { replace: true });   // cho phiếu mới hiện ở đầu danh sách
+  };
+
   const cols = [
     { key: 'no', label: t('inv.no') },
     { key: 'type', label: t('inv.type') },
@@ -238,13 +463,58 @@ function ListView({ state, setState, docs, can, t }) {
 
   return (
     <div className="pad">
-      <h2>{t('inv.title')}</h2>
+      <div className="ghead">
+        <h2>{t('inv.title')}</h2>
+        {can('inventory', 'create') && (
+          <button className="tb" onClick={() => setState({ importing: !state.importing }, { replace: true })}>📂 {t('inv.importFile')}</button>
+        )}
+      </div>
+
+      {state.importing && can('inventory', 'create') && (
+        <div className="importbox">
+          <div className="importhead">
+            <b>{t('inv.importTitle')}</b>
+            <button type="button" className="xbtn" title={t('inv.close')} aria-label={t('inv.close')} onClick={() => setState({ importing: false }, { replace: true })}>✕</button>
+          </div>
+          <p className="importhint">{t('inv.importHint')}</p>
+          <div className="importacts">
+            <input key={imp.key} type="file" accept=".csv,text/csv" disabled={imp.busy} onChange={onFile} />
+            <button type="button" className="tb" onClick={downloadTemplate}>⬇ {t('inv.importTemplate')}</button>
+            {imp.busy && <span>⏳ {t('inv.importBusy')}</span>}
+          </div>
+          {imp.result && (
+            <div className="importres" role="status">
+              {imp.result.ok > 0 && <div>✅ {t('inv.importDone').replace('{n}', imp.result.ok)}</div>}
+              {imp.result.errors.length > 0 && (<>
+                <div>⚠️ {t('inv.importErrors').replace('{n}', imp.result.errors.length)}</div>
+                <ul className="importerr">{imp.result.errors.map((m, i) => <li key={i}>{m}</li>)}</ul>
+              </>)}
+            </div>
+          )}
+        </div>
+      )}
 
       <Toolbar state={state} setState={setState} t={t} countLabel={countLabel} />
+
+      {selected.length > 0 && (
+        <div className="bulkbar" role="status">
+          <b>{t('inv.selected').replace('{n}', selected.length)}</b>
+          {pageAllSelected && selected.length < total && (
+            <button type="button" className="tb" onClick={() => setSel(all.map((d) => d.id))}>{t('inv.selectAllResults').replace('{n}', total)}</button>
+          )}
+          <button type="button" className="tb" onClick={() => setSel([])}>{t('inv.clearSel')}</button>
+          <button type="button" className="tb" onClick={onBulkDelete}>🗑 {t('inv.deleteSelected')} ({selected.length})</button>
+        </div>
+      )}
 
       <table className="invtable zebra">
         <thead>
           <tr>
+            {canDelete && (
+              <th className="selcol">
+                <HeaderCheck checked={pageAllSelected} indeterminate={pageSomeSelected} onChange={togglePage} label={t('inv.selectAll')} />
+              </th>
+            )}
             {cols.map((c) => {
               const on = sort?.key === c.key;
               return (
@@ -260,7 +530,12 @@ function ListView({ state, setState, docs, can, t }) {
         </thead>
         <tbody>
           {items.map((d) => (
-            <tr key={d.id}>
+            <tr key={d.id} className={selSet.has(d.id) ? 'sel' : undefined}>
+              {canDelete && (
+                <td className="selcol">
+                  <input type="checkbox" checked={selSet.has(d.id)} onChange={() => toggleOne(d.id)} aria-label={t('inv.selectRow') + ' ' + d.no} />
+                </td>
+              )}
               <td>{d.no}</td><td>{t('inv.' + d.type)}</td><td>{d.partner?.name}</td><td>{d.date}</td><td>{vnd(lineTotal(d.lines))}</td>
               <td>
                 <button className="xbtn" title={t('inv.edit')} aria-label={t('inv.edit')} onClick={() => setState({ mode: 'form', editing: d })}>✏️</button>
@@ -271,7 +546,7 @@ function ListView({ state, setState, docs, can, t }) {
             </tr>
           ))}
           {!items.length && (
-            <tr><td colSpan={cols.length + 1} className="empty">{hasCriteria ? t('inv.noResult') : t('inv.empty')}</td></tr>
+            <tr><td colSpan={cols.length + 1 + (canDelete ? 1 : 0)} className="empty">{hasCriteria ? t('inv.noResult') : t('inv.empty')}</td></tr>
           )}
         </tbody>
       </table>
@@ -441,6 +716,6 @@ function View(props) {
 
 export default {
   id: 'inventory', title: 'inv.title', icon: '📦', order: 5, messages, search, refresh: load,
-  initialState: { mode: 'list', filterType: 'all', editing: null, pageSize: 5, ...EMPTY_VIEW }, Menu, ribbon, View,
+  initialState: { mode: 'list', filterType: 'all', editing: null, pageSize: 5, selected: [], importing: false, ...EMPTY_VIEW }, Menu, ribbon, View,
   setup() { load(); },
 };

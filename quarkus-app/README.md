@@ -66,3 +66,36 @@ If you want to learn more about building native executables, please consult <htt
 Easily start your RESTful Web Services
 
 [Related guide section...](https://quarkus.io/guides/getting-started#the-jax-rs-resources)
+
+
+## run 
+docker compose up -d pgadmin
+docker compose up -d postgres
+
+# clean db
+ quarkus_flyway_clean_at_start=true ./mvnw clean compile quarkus:dev
+
+# Test create
+curl -i -X POST http://localhost:8080/api/auth/register \
+   -H "Content-Type: application/json" \
+   -d '{"username": "user2", "password": "123"}'
+
+# Test login
+curl -i -X POST http://localhost:8080/api/auth/login \
+   -H "Content-Type: application/json" \
+   -d '{"username": "user1", "password": "123"}'
+
+# Test login HTTP_ONLY
+curl -i -X POST http://localhost:8080/api/auth/loginv1 \
+  -c cookies.txt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "user1",
+    "password": "123"
+  }'
+
+
+
+
+
+
