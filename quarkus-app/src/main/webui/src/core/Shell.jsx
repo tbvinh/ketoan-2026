@@ -54,7 +54,7 @@ export default function Shell() {
     ? active.refresh(props)
     : props.setState({ reload: (props.state.reload ?? 0) + 1 }, { replace: true });
   const tabs = buildTabs(commonTabs({ logout, refresh, lang, setLang, navOpen, toggleNav }), active.ribbon?.({ ...props, t }));
-
+const display = user.name || user.username || '?';
   return (
     <div className="app">
       <header className="topbar">
@@ -69,7 +69,7 @@ export default function Shell() {
             onKeyDown={(e) => e.key === 'Escape' && closeSearch()} />
         </form>
         <span className="rolebadge">{t('role.' + role)}</span>
-        <span className="avatar" title={user.name}>{user.name[0].toUpperCase()}</span>
+        <span className="avatar" title={display}>{display[0].toUpperCase()}</span>
       </header>
       <Ribbon tabs={tabs} tab={tab} setTab={setTab} />
       <div className="body">

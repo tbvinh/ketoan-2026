@@ -1,32 +1,78 @@
-import { createContext, useContext, useState } from 'react';
-import { fakeApi } from './api.js';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { apiFetch, setUnauthorizedHandler } from './api.js';
 
-// Dummy user DB: role quyết định menu Quản trị và quyền CRUD của từng plugin
-const USERS = [
-  { u: 'admin', p: '123456', role: 'admin', name: 'Quản trị viên' },
-  { u: 'demo', p: '123456', role: 'user', name: 'Người dùng Demo' },
-];
+// Đổi đường dẫn cho khớp với @Path của resource phía Java.
+// Token nằm trong cookie HttpOnly do server set, JS không đọc/ghi được => KHÔNG lưu token ở localStorage nữa.
+const AUTH = {
+  login: '/api/auth/loginv1',
+  me: '/api/auth/me',          // CẦN THÊM ở backend: trả {username, name, role} của người đang đăng nhập (đọc từ cookie)
+  logout: '/api/auth/logout',  // CẦN THÊM ở backend: xóa cookie (set maxAge=0)
+};
+
+const KEY = 'user';   // chỉ cache thông tin hiển thị (tên, role) để render nhanh; không phải bí mật
+
+// TẠM THỜI: chỉ dùng khi backend chưa có /me (loginv1 hiện không trả role). Xóa khi đã có /me.
+// Lưu ý: role phía client chỉ để ẩn/hiện menu; quyền thật phải do server kiểm tra.
+const TEMP_ROLES = { admin: 'admin' };
+const isMissing = (e) => e?.status === 404 || e?.status === 405;
+
+const readCached = () => {
+  try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; }
+};
+// Chuyển dữ liệu từ server sang dạng user của app; chỉnh tên field ở đây nếu /me trả khác
+const toInfo = (d) => ({ username: d.username, name: d.name ?? d.username, role: d.role ?? 'user' });
 
 const Ctx = createContext();
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
-  });
+  const [user, setUser] = useState(readCached);
 
-  const login = async (u, p) => {
-    // API đăng nhập giả: trả về thông tin user kèm role (thay bằng API thật khi có backend)
-    const found = await fakeApi(USERS.find((x) => x.u === u && x.p === p) ?? null, 600);
-    if (!found) throw new Error('invalid');
-    const info = { username: found.u, name: found.name, role: found.role };
-    localStorage.setItem('user', JSON.stringify(info));
-    setUser(info);
-  };
-  const logout = () => { 
-    localStorage.removeItem('user'); setUser(null); 
-      // 2. Xóa sạch phần `#...` đằng sau URL
+  const persist = (info) => { localStorage.setItem(KEY, JSON.stringify(info)); setUser(info); };
+
+  // Xóa phiên phía client + xóa phần `#...` sau URL
+  const clearSession = () => {
+    localStorage.removeItem(KEY);
+    setUser(null);
     history.replaceState(null, '', window.location.pathname);
-    // 3. (Tùy chọn) Chuyển hướng sang trang login hoặc reload lại ứng dụng
-    //window.location.href = '/login'; 
+  };
+
+  // Mọi request bị 401 (cookie hết hạn/không hợp lệ) => tự về màn hình đăng nhập
+  useEffect(() => {
+    setUnauthorizedHandler(clearSession);
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  // Mở lại trang khi đang có user cache: hỏi server xem cookie còn hiệu lực không.
+  // 401 => đăng xuất; 404 (chưa có /me) hoặc lỗi mạng => giữ nguyên, request tiếp theo sẽ tự phát hiện.
+  useEffect(() => {
+    if (!user) return undefined;
+    let alive = true;
+    apiFetch(AUTH.me, { silent401: true })
+      .then((d) => { if (alive) persist(toInfo(d)); })
+      .catch((e) => { if (alive && e?.status === 401) clearSession(); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const login = async (username, password) => {
+    // 1. Server kiểm tra tài khoản và set cookie HttpOnly `token` (body chỉ có message)
+    //    Giả định AuthRequest có field username/password — đổi lại nếu khác.
+    await apiFetch(AUTH.login, { method: 'POST', body: { username, password }, silent401: true });
+
+    // 2. Lấy thông tin user (cookie được trình duyệt tự gửi kèm)
+    let info;
+    try {
+      info = toInfo(await apiFetch(AUTH.me, { silent401: true }));
+    } catch (e) {
+      if (!isMissing(e)) throw e;   // 401 ở đây thường nghĩa là cookie không được lưu (xem mục CORS/Secure)
+      info = { username, name: username, role: TEMP_ROLES[username] ?? 'user' };   // TẠM THỜI, xem ghi chú trên
+    }
+    persist(info);
+  };
+
+  const logout = async () => {
+    // HttpOnly cookie chỉ server mới xóa được; lỗi mạng/404 vẫn đăng xuất phía client
+    try { await apiFetch(AUTH.logout, { method: 'POST', silent401: true }); } catch { /* bỏ qua */ }
+    clearSession();
   };
 
   return <Ctx.Provider value={{ user, login, logout }}>{children}</Ctx.Provider>;

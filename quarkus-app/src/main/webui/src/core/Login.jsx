@@ -8,12 +8,22 @@ export default function Login() {
   const { t } = useI18n();
   const [u, setU] = useState('admin');
   const [p, setP] = useState('');
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState('');     // chuỗi thông báo; rỗng = không lỗi
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
-    e.preventDefault(); setBusy(true); setErr(false);
-    try { await login(u, p); } catch { setErr(true); setBusy(false); }
+    e.preventDefault();
+    if (busy) return;                      // chặn bấm Enter/Click liên tiếp
+    setBusy(true); setErr('');
+    try {
+      await login(u.trim(), p);            // auth.jsx: gọi /loginv1 (server set cookie HttpOnly) rồi nạp thông tin user
+      // Thành công: App chuyển màn hình nên không cần setBusy(false) ở đây
+    } catch (ex) {
+      // 401/403 = sai tài khoản hoặc mật khẩu; lỗi khác (mạng, 500…) hiện nguyên nhân thật để dễ xử lý
+      const wrongCreds = ex?.status === 401 || ex?.status === 403;
+      setErr(wrongCreds || !ex?.message ? t('login.error') : ex.message);
+      setBusy(false);
+    }
   };
 
   return (
@@ -21,10 +31,12 @@ export default function Login() {
       <form onSubmit={submit}>
         <LangSwitch />
         <h2>{t('login.title')}</h2>
-        <input value={u} onChange={(e) => setU(e.target.value)} placeholder={t('login.user')} autoFocus />
-        <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder={t('login.pass')} />
-        {err && <p className="err">{t('login.error')}</p>}
-        <button className="btn" disabled={busy}>{busy && <Spinner />}{t('login.submit')}</button>
+        <input value={u} onChange={(e) => setU(e.target.value)} placeholder={t('login.user')}
+          autoComplete="username" autoFocus disabled={busy} />
+        <input type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder={t('login.pass')}
+          autoComplete="current-password" disabled={busy} />
+        {err && <p className="err" role="alert">{err}</p>}
+        <button className="btn" disabled={busy || !u.trim() || !p}>{busy && <Spinner />}{t('login.submit')}</button>
         <small className="muted">{t('login.hint')}</small>
       </form>
     </div>

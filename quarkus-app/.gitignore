@@ -1,3 +1,6 @@
 target
 node_modules/
 .env
+privateKey.pem
+publicKey.pem
+rsaPrivateKey.pem

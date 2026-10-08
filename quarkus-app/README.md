@@ -68,6 +68,14 @@ Easily start your RESTful Web Services
 [Related guide section...](https://quarkus.io/guides/getting-started#the-jax-rs-resources)
 
 
+// =====================================================================================
+// 2) Tạo cặp khóa RSA (chạy 1 lần), đặt 2 file .pem vào src/main/resources
+// =====================================================================================
+//   openssl genrsa -out rsaPrivateKey.pem 2048
+//   openssl rsa -pubout -in rsaPrivateKey.pem -out publicKey.pem
+//   openssl pkcs8 -topk8 -nocrypt -inform pem -in rsaPrivateKey.pem -outform pem -out privateKey.pem
+//   (xóa rsaPrivateKey.pem; KHÔNG commit privateKey.pem lên git, production nên nạp từ secret/đường dẫn ngoài)
+
 ## run 
 docker compose up -d pgadmin
 docker compose up -d postgres

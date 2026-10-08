@@ -7,7 +7,7 @@ ALTER TABLE users
 INSERT INTO users (username, password, role) VALUES  
     ('admin', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'ADMIN'),
     ('user1', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'USER'),
-    ('user2', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'USER');
+    ('vinhtran', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'USER');
 
 
 ALTER TABLE users ADD COLUMN token VARCHAR(255);
