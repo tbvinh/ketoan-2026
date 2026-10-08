@@ -29,14 +29,10 @@ public class SecurityFilter implements ContainerRequestFilter {
         // Chuẩn hóa path: xóa dấu / ở đầu nếu có
         String cleanPath = path.startsWith("/") ? path.substring(1) : path;
         // Bỏ qua kiểm tra Cookie nếu đường dẫn chứa "auth"
-        if (cleanPath.contains("auth")) {
+        if (cleanPath.contains("auth") || cleanPath.contains("public")) {
             return; // Cho phép đi tiếp
         }
         
-        // Bỏ qua các endpoint public
-        if (path.startsWith("/api/auth") || path.startsWith("auth") ) {
-            return;
-        }
 
         // Lấy cookie có tên là "token"
         Cookie tokenCookie = requestContext.getCookies().get("token");

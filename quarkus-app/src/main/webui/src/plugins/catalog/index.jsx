@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../core/i18n.jsx';
 import { Loading } from '../../core/ui.jsx';
 import Denied from '../../core/Denied.jsx';
@@ -31,6 +31,15 @@ const messages = {
     'cat.saving': 'Đang lưu…', 'cat.saveFailed': 'Không thể lưu', 'cat.deleteFailed': 'Không thể xóa', 'cat.loadFailed': 'Không tải được dữ liệu', 'cat.retry': 'Thử lại',
     'cat.perPage': 'Dòng/trang', 'cat.pageOf': 'Trang {p} / {n}', 'cat.first': 'Trang đầu', 'cat.prev': 'Trang trước', 'cat.next': 'Trang sau', 'cat.last': 'Trang cuối',
     'cat.delete': 'Xóa', 'cat.confirmDelete': 'Bạn có chắc muốn xóa "{name}"? Thao tác này không thể hoàn tác.',
+    'cat.newGroup': 'Thao tác', 'cat.importFile': 'Import', 'cat.importTitle': 'Import từ file CSV', 'cat.importTemplate': 'Tải file mẫu', 'cat.close': 'Đóng',
+    'cat.importHint': 'File CSV (UTF-8, phân tách bằng , hoặc ;). Dòng đầu là tiêu đề cột. Cột: {cols}. Cột bắt buộc: {req}.',
+    'cat.importBusy': 'Đang import…', 'cat.importDone': 'Đã import {n} dòng.', 'cat.importErrors': '{n} lỗi (các dòng lỗi được bỏ qua):',
+    'cat.errEmpty': 'File trống', 'cat.errRead': 'Không đọc được file', 'cat.errHeader': 'File thiếu cột bắt buộc: {cols}',
+    'cat.errLine': 'Dòng {line}: {msg}', 'cat.errRequired': 'Thiếu "{field}"', 'cat.errPrice': 'Đơn giá không hợp lệ',
+    'cat.errDup': 'Trùng trong file: "{name}"', 'cat.errNoType': 'Không tìm thấy loại vật tư "{name}"',
+    'cat.selectAll': 'Chọn tất cả trên trang', 'cat.selectRow': 'Chọn dòng', 'cat.selected': 'Đã chọn {n} dòng', 'cat.clearSel': 'Bỏ chọn',
+    'cat.deleteSelected': 'Xóa đã chọn', 'cat.confirmBulkDelete': 'Bạn có chắc muốn xóa {n} dòng đã chọn? Thao tác này không thể hoàn tác.',
+    'cat.bulkFailed': 'Không xóa được {n}/{total} dòng',
   },
   en: {
     'cat.title': 'Master Data', 'cat.suppliers': 'Suppliers', 'cat.customers': 'Customers', 'cat.materials': 'Materials',
@@ -46,13 +55,24 @@ const messages = {
     'cat.saving': 'Saving…', 'cat.saveFailed': 'Could not save', 'cat.deleteFailed': 'Could not delete', 'cat.loadFailed': 'Could not load data', 'cat.retry': 'Retry',
     'cat.perPage': 'Rows/page', 'cat.pageOf': 'Page {p} / {n}', 'cat.first': 'First page', 'cat.prev': 'Previous page', 'cat.next': 'Next page', 'cat.last': 'Last page',
     'cat.delete': 'Delete', 'cat.confirmDelete': 'Are you sure you want to delete "{name}"? This cannot be undone.',
+    'cat.newGroup': 'Actions', 'cat.importFile': 'Import', 'cat.importTitle': 'Import from CSV', 'cat.importTemplate': 'Download template', 'cat.close': 'Close',
+    'cat.importHint': 'CSV file (UTF-8, separated by , or ;). First row is the header. Columns: {cols}. Required: {req}.',
+    'cat.importBusy': 'Importing…', 'cat.importDone': 'Imported {n} rows.', 'cat.importErrors': '{n} errors (failed rows were skipped):',
+    'cat.errEmpty': 'File is empty', 'cat.errRead': 'Could not read file', 'cat.errHeader': 'Missing required columns: {cols}',
+    'cat.errLine': 'Row {line}: {msg}', 'cat.errRequired': '"{field}" is missing', 'cat.errPrice': 'Invalid price',
+    'cat.errDup': 'Duplicate in file: "{name}"', 'cat.errNoType': 'Material type "{name}" not found',
+    'cat.selectAll': 'Select all on this page', 'cat.selectRow': 'Select row', 'cat.selected': '{n} selected', 'cat.clearSel': 'Clear selection',
+    'cat.deleteSelected': 'Delete selected', 'cat.confirmBulkDelete': 'Are you sure you want to delete {n} selected rows? This cannot be undone.',
+    'cat.bulkFailed': 'Could not delete {n}/{total} rows',
   },
 };
 
 /* ---------- Trạng thái tìm kiếm / lọc / sắp xếp / phân trang ---------- */
 
 const NO_FILTERS = {};   // hằng số module để tham chiếu không đổi giữa các lần render
-const EMPTY_VIEW = { q: '', filters: NO_FILTERS, sort: null, page: 1 };
+const NO_SELECTION = [];
+// selected: id các dòng được tick (giữ khi đổi trang/sắp xếp; xóa khi đổi tìm kiếm/lọc/danh mục)
+const EMPTY_VIEW = { q: '', filters: NO_FILTERS, sort: null, page: 1, selected: NO_SELECTION };
 const PAGE_SIZES = [5, 10, 20, 50, 100];
 
 // Bộ lọc gửi thẳng lên server dưới dạng query string: ?typeId=..&priceMin=..
@@ -115,6 +135,132 @@ function schemaFor(id, t, types) {
   return [{ key: 'code', label: t('cat.code') }, { key: 'name', label: t('cat.name') }, { key: 'phone', label: t('cat.phone') }, { key: 'address', label: t('cat.address') }]; // suppliers/customers
 }
 
+/* ---------- Import CSV ---------- */
+
+// Cột CSV cho từng danh mục (tên cột trùng key của bản ghi; riêng vật tư dùng "type" = tên loại vật tư)
+const IMPORT_SPEC = {
+  suppliers: { cols: ['code', 'name', 'phone', 'address'], required: ['name'], sample: ['NCC001', 'NCC Phong Vũ', '0901234567', 'TP.HCM'] },
+  customers: { cols: ['code', 'name', 'phone', 'address'], required: ['name'], sample: ['KH001', 'Công ty TNHH ABC', '0907654321', 'Hà Nội'] },
+  materials: { cols: ['code', 'name', 'unit', 'price', 'type'], required: ['name'], sample: ['VT001', 'Bàn phím cơ', 'cái', '700000', 'Phụ kiện'] },
+  materialTypes: { cols: ['name'], required: ['name'], sample: ['Phụ kiện'] },
+  banks: { cols: ['code', 'name', 'branch'], required: ['code', 'name'], sample: ['VCB', 'Vietcombank', 'Chi nhánh TP.HCM'] },
+  accounts: { cols: ['code', 'name'], required: ['code', 'name'], sample: ['111', 'Tiền mặt'] },
+};
+
+const norm = (s) => (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'd').replace(/\s+/g, ' ').toLowerCase().trim();
+
+const csvEsc = (v) => (/[",;\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+
+function downloadTemplate(catId) {
+  const spec = IMPORT_SPEC[catId];
+  const text = [spec.cols.join(','), spec.sample.map(csvEsc).join(',')].join('\r\n');
+  const blob = new Blob(['\uFEFF' + text], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'catalog-' + catId + '-template.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Parser CSV nhỏ: hỗ trợ dấu ngoặc kép, dấu phân cách , hoặc ; (Excel tiếng Việt hay xuất ;)
+function parseCsv(text) {
+  text = text.replace(/^\uFEFF/, '');
+  const first = text.split(/\r?\n/, 1)[0];
+  const delim = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  const rows = [];
+  let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === delim) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim() !== ''));
+}
+
+const parseNum = (v) => {
+  const x = String(v ?? '').trim().replace(/\s/g, '');
+  if (x === '') return NaN;
+  return Number(/^\d{1,3}([.,]\d{3})+$/.test(x) ? x.replace(/[.,]/g, '') : x.replace(',', '.'));   // 700.000 -> 700000
+};
+
+// Trả về { ok, errors }. Dòng lỗi bị bỏ qua, các dòng hợp lệ vẫn được thêm.
+async function importRows(text, { catId, store, types, can, t }) {
+  const spec = IMPORT_SPEC[catId];
+  const rows = parseCsv(text);
+  if (!rows.length) return { ok: 0, errors: [t('cat.errEmpty')] };
+  const head = rows[0].map((h) => norm(h));
+  const idx = Object.fromEntries(spec.cols.map((c) => [c, head.indexOf(c)]));
+  const missing = spec.required.filter((c) => idx[c] < 0);
+  if (missing.length) return { ok: 0, errors: [t('cat.errHeader').replace('{cols}', missing.join(', '))] };
+  const cell = (r, c) => (idx[c] >= 0 ? (r[idx[c]] ?? '').trim() : '');
+
+  const errors = [];
+  const err = (line, msg) => errors.push(t('cat.errLine').replace('{line}', line).replace('{msg}', msg));
+  const typeCache = [...types];            // loại vật tư đã biết (kể cả loại vừa tự tạo trong lúc import)
+  const seen = new Set();                  // chống trùng ngay trong file
+  let ok = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const line = i + 1;
+    const rec = {};
+    spec.cols.forEach((c) => { if (c !== 'type' && idx[c] >= 0) rec[c] = cell(r, c); });
+
+    const lack = spec.required.find((c) => !cell(r, c));
+    if (lack) { err(line, t('cat.errRequired').replace('{field}', lack)); continue; }
+
+    const key = norm(rec.code || rec.name);
+    if (seen.has(key)) { err(line, t('cat.errDup').replace('{name}', rec.code || rec.name)); continue; }
+
+    if (catId === 'materials') {
+      const raw = cell(r, 'price');
+      const price = raw === '' ? 0 : parseNum(raw);
+      if (!(price >= 0)) { err(line, t('cat.errPrice')); continue; }
+      rec.price = price;
+      const typeName = cell(r, 'type');
+      rec.typeId = null;
+      if (typeName) {
+        let ty = typeCache.find((x) => norm(x.name) === norm(typeName));
+        if (!ty) {
+          if (!can('catalog', 'create')) { err(line, t('cat.errNoType').replace('{name}', typeName)); continue; }
+          try { ty = await materialTypesStore.add({ name: typeName }); typeCache.push(ty); }
+          catch (e) { err(line, e?.message ?? String(e)); continue; }
+        }
+        rec.typeId = ty.id;
+      }
+    }
+
+    try { await store.add(rec); seen.add(key); ok++; }
+    catch (e) { err(line, e?.message ?? String(e)); }
+  }
+  return { ok, errors };
+}
+
+/* ---------- CSS riêng của plugin (có thể chuyển sang file style chung) ---------- */
+
+const CSS = `
+.invtable.zebra tbody tr:nth-child(even) { background: rgba(128,128,128,.09); }
+.invtable.zebra tbody tr:hover { background: rgba(15,108,189,.10); }
+.selcol { width: 32px; text-align: center; }
+.invtable tr.sel td { background: rgba(15,108,189,.16); }
+.bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 12px; border-radius: 6px; background: rgba(15,108,189,.12); }
+.importbox { margin: 8px 0 12px; padding: 12px 14px; border: 1px dashed var(--border, #d0d5dd); border-radius: 8px; }
+.importhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.importhint { margin: 0 0 10px; font-size: 12.5px; color: var(--muted, #667085); }
+.importacts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.importres { margin-top: 10px; font-size: 13px; }
+.importerr { margin: 6px 0 0; padding-left: 18px; color: #b42318; max-height: 160px; overflow: auto; }
+`;
+
 /* ---------- Giao diện ---------- */
 
 function Menu({ state, setState }) {
@@ -123,33 +269,42 @@ function Menu({ state, setState }) {
     <h3>{t('cat.title')}</h3>
     {CATS.map((c) => (
       <button key={c.id} className={'item' + (state.category === c.id ? ' on' : '')}
-        // Đổi danh mục -> reset tìm kiếm / bộ lọc / sắp xếp / trang vì mỗi danh mục có cột khác nhau
-        onClick={() => setState({ category: c.id, editing: null, error: null, ...EMPTY_VIEW })}>{c.icon} {t('cat.' + c.id)}</button>
+        // Đổi danh mục -> reset tìm kiếm / bộ lọc / sắp xếp / trang / lựa chọn vì mỗi danh mục có cột khác nhau
+        onClick={() => setState({ category: c.id, editing: null, error: null, importing: false, ...EMPTY_VIEW })}>{c.icon} {t('cat.' + c.id)}</button>
     ))}
   </>);
 }
+
+// Ribbon của Danh mục: Thêm mới (form trống) + Import. (Bản cũ copy từ Nhập xuất kho nên gọi blankDoc không tồn tại.)
 const ribbon = ({ setState, can }) => ({
-  tabs: [{ id: 'catalog', title: 'cat.title', groups: [{ id: 'new', title: 'cat.newGroup', items: [
-    { id: 'new-import', icon: '📥', label: 'cat.newImport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('import') }) },
-    { id: 'new-export', icon: '📤', label: 'cat.newExport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('export') }) },
-    { id: 'new-return', icon: '↩️', label: 'cat.newReturn', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('return') }) },
+  tabs: [{ id: 'catalog', title: 'cat.title', groups: [{ id: 'actions', title: 'cat.newGroup', items: [
+    { id: 'cat-new', icon: '➕', label: 'cat.new', disabled: !can('catalog', 'create'), onClick: () => setState({ editing: {}, error: null, importing: false }) },
+    { id: 'cat-import', icon: '📂', label: 'cat.importFile', disabled: !can('catalog', 'create'), onClick: () => setState({ editing: null, importing: true }) },
   ] }] }],
 });
+
+// Checkbox "chọn tất cả" có trạng thái lưng chừng (indeterminate)
+function HeaderCheck({ checked, indeterminate, onChange, label, disabled }) {
+  const ref = useRef(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = !!indeterminate && !checked; }, [indeterminate, checked]);
+  return <input ref={ref} type="checkbox" checked={checked} disabled={disabled} onChange={onChange} aria-label={label} title={label} />;
+}
 
 function Toolbar({ state, setState, filterDefs, countLabel, fetching }) {
   const { t } = useI18n();
   const q = state.q ?? '';
   const filters = state.filters ?? NO_FILTERS;
   const active = !!q || filterDefs.some((f) => filters[f.key] !== undefined && filters[f.key] !== '');
-  const setFilter = (key, value) => setState({ filters: { ...filters, [key]: value }, page: 1 }, { replace: true });
+  // Đổi tìm kiếm/lọc thì bỏ lựa chọn, tránh xóa nhầm các dòng không còn nhìn thấy
+  const setFilter = (key, value) => setState({ filters: { ...filters, [key]: value }, page: 1, selected: NO_SELECTION }, { replace: true });
 
   return (
     <div className="cattools">
       <div className="searchbox">
         <span aria-hidden="true">🔍</span>
         <input type="search" value={q} placeholder={t('cat.search')} aria-label={t('cat.search')}
-          onChange={(e) => setState({ q: e.target.value, page: 1 }, { replace: true })} />
-        {q && <button type="button" className="xbtn" title={t('cat.clear')} onClick={() => setState({ q: '', page: 1 }, { replace: true })}>✕</button>}
+          onChange={(e) => setState({ q: e.target.value, page: 1, selected: NO_SELECTION }, { replace: true })} />
+        {q && <button type="button" className="xbtn" title={t('cat.clear')} onClick={() => setState({ q: '', page: 1, selected: NO_SELECTION }, { replace: true })}>✕</button>}
       </div>
 
       {filterDefs.map((f) => (
@@ -201,6 +356,7 @@ function Body({ state, setState, can }) {
   const confirm = useConfirm();
   const cat = CATS.find((c) => c.id === state.category);
   const types = materialTypesStore.use().items;   // danh sách nhỏ, tải đủ để đổ dropdown và hiển thị tên loại
+  const [imp, setImp] = useState({ busy: false, result: null, key: 0 });
 
   const q = state.q ?? '';
   const filters = state.filters ?? NO_FILTERS;
@@ -269,18 +425,95 @@ function Body({ state, setState, can }) {
     setState({ sort: next, page: 1 }, { replace: true });
   };
 
+  // ----- Chọn nhiều + xóa hàng loạt -----
+  // Dữ liệu phân trang trên server nên chỉ chọn được các dòng đang hiển thị; lựa chọn được giữ khi đổi trang/sắp xếp.
+  const canDelete = can('catalog', 'delete');
+  const busy = !!state.bulkBusy;
+  const selSet = new Set(state.selected ?? NO_SELECTION);
+  const pageIds = items.map((it) => it.id);
+  const pageAllSelected = items.length > 0 && pageIds.every((id) => selSet.has(id));
+  const pageSomeSelected = pageIds.some((id) => selSet.has(id));
+  const setSel = (ids) => setState({ selected: ids }, { replace: true });
+  const toggleOne = (id) => setSel(selSet.has(id) ? [...selSet].filter((x) => x !== id) : [...selSet, id]);
+  const togglePage = () => setSel(pageAllSelected
+    ? [...selSet].filter((x) => !pageIds.includes(x))
+    : [...new Set([...selSet, ...pageIds])]);
+
+  const onBulkDelete = async () => {
+    const ids = [...selSet];
+    if (!ids.length) return;
+    if (!(await confirm(t('cat.confirmBulkDelete').replace('{n}', ids.length)))) return;
+    setState({ bulkBusy: true, error: null }, { replace: true });
+    const failed = [];
+    let firstMsg = '';
+    for (const id of ids) {   // lần lượt từng dòng để không dồn request lên server
+      try { await cat.store.remove(id); }
+      catch (e) { failed.push(id); firstMsg = firstMsg || (e?.message ?? String(e)); }
+    }
+    setState({
+      bulkBusy: false,
+      selected: failed,   // dòng xóa lỗi vẫn được giữ chọn để thử lại
+      error: failed.length
+        ? t('cat.bulkFailed').replace('{n}', failed.length).replace('{total}', ids.length) + ': ' + firstMsg
+        : null,
+    }, { replace: true });
+    reload();
+  };
+
+  // ----- Import -----
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImp((s) => ({ ...s, busy: true, result: null }));
+    let result;
+    try { result = await importRows(await file.text(), { catId: cat.id, store: cat.store, types, can, t }); }
+    catch (err) { result = { ok: 0, errors: [t('cat.errRead') + ': ' + (err?.message ?? err)] }; }
+    setImp((s) => ({ busy: false, result, key: s.key + 1 }));   // đổi key để chọn lại cùng 1 file vẫn chạy
+    if (result.ok) { setState({ ...EMPTY_VIEW }, { replace: true }); reload(); }
+  };
+
   const from = (page - 1) * pageSize + 1;
   const countLabel = total
     ? t('cat.range').replace('{from}', from).replace('{to}', from + items.length - 1).replace('{total}', total)
     : '';
   const hasCriteria = !!q || Object.values(filters).some((v) => v !== '' && v != null);
+  const spec = IMPORT_SPEC[cat.id];
 
   return (
     <div className="pad">
       <div className="ghead">
         <h2>{t('cat.' + cat.id)}</h2>
-        {can('catalog', 'create') && <button className="tb" onClick={() => setState({ editing: schema.reduce((o, f) => ({ ...o, [f.key]: '' }), {}), error: null })}>➕ {t('cat.new')}</button>}
+        <div>
+          {can('catalog', 'create') && (
+            <button className="tb" onClick={() => setState({ importing: !state.importing }, { replace: true })}>📂 {t('cat.importFile')}</button>
+          )}{' '}
+          {can('catalog', 'create') && <button className="tb" onClick={() => setState({ editing: {}, error: null })}>➕ {t('cat.new')}</button>}
+        </div>
       </div>
+
+      {state.importing && can('catalog', 'create') && (
+        <div className="importbox">
+          <div className="importhead">
+            <b>{t('cat.importTitle')} — {t('cat.' + cat.id)}</b>
+            <button type="button" className="xbtn" title={t('cat.close')} aria-label={t('cat.close')} onClick={() => setState({ importing: false }, { replace: true })}>✕</button>
+          </div>
+          <p className="importhint">{t('cat.importHint').replace('{cols}', spec.cols.join(', ')).replace('{req}', spec.required.join(', '))}</p>
+          <div className="importacts">
+            <input key={imp.key} type="file" accept=".csv,text/csv" disabled={imp.busy} onChange={onFile} />
+            <button type="button" className="tb" onClick={() => downloadTemplate(cat.id)}>⬇ {t('cat.importTemplate')}</button>
+            {imp.busy && <span>⏳ {t('cat.importBusy')}</span>}
+          </div>
+          {imp.result && (
+            <div className="importres" role="status">
+              {imp.result.ok > 0 && <div>✅ {t('cat.importDone').replace('{n}', imp.result.ok)}</div>}
+              {imp.result.errors.length > 0 && (<>
+                <div>⚠️ {t('cat.importErrors').replace('{n}', imp.result.errors.length)}</div>
+                <ul className="importerr">{imp.result.errors.map((m, i) => <li key={i}>{m}</li>)}</ul>
+              </>)}
+            </div>
+          )}
+        </div>
+      )}
 
       {state.error && <p className="formError" role="alert">{state.error}</p>}
       {loadError && (
@@ -291,9 +524,25 @@ function Body({ state, setState, can }) {
 
       <Toolbar state={state} setState={setState} filterDefs={filterDefs} countLabel={countLabel} fetching={fetching} />
 
-      <table className={'invtable' + (fetching ? ' fetching' : '')} aria-busy={fetching}>
+      {selSet.size > 0 && (
+        <div className="bulkbar" role="status">
+          <b>{t('cat.selected').replace('{n}', selSet.size)}</b>
+          <button type="button" className="tb" disabled={busy} onClick={() => setSel([])}>{t('cat.clearSel')}</button>
+          <button type="button" className="tb" disabled={busy} onClick={onBulkDelete}>
+            {busy ? '⏳ ' : '🗑 '}{t('cat.deleteSelected')} ({selSet.size})
+          </button>
+        </div>
+      )}
+
+      <table className={'invtable zebra' + (fetching ? ' fetching' : '')} aria-busy={fetching}>
         <thead>
           <tr>
+            {canDelete && (
+              <th className="selcol">
+                <HeaderCheck checked={pageAllSelected} indeterminate={pageSomeSelected} disabled={busy || !items.length}
+                  onChange={togglePage} label={t('cat.selectAll')} />
+              </th>
+            )}
             {schema.map((f) => {
               const sk = f.sortKey ?? f.key;
               const on = sort?.key === sk;
@@ -310,18 +559,24 @@ function Body({ state, setState, can }) {
         </thead>
         <tbody>
           {items.map((it) => (
-            <tr key={it.id} className={state.busyId === it.id ? 'busy' : undefined} aria-busy={state.busyId === it.id}>
+            <tr key={it.id} className={[state.busyId === it.id ? 'busy' : '', selSet.has(it.id) ? 'sel' : ''].join(' ').trim() || undefined} aria-busy={state.busyId === it.id}>
+              {canDelete && (
+                <td className="selcol">
+                  <input type="checkbox" checked={selSet.has(it.id)} disabled={busy} onChange={() => toggleOne(it.id)}
+                    aria-label={t('cat.selectRow') + ' ' + (it.name || it.code || '')} />
+                </td>
+              )}
               {schema.map((f) => <td key={f.key}>{f.display ? f.display(it) : it[f.key]}</td>)}
               <td>
                 {can('catalog', 'update') && <button className="xbtn" onClick={() => setState({ editing: { ...it }, error: null })}>✏️</button>}
-                {can('catalog', 'delete') && (
-                  <button className="xbtn" disabled={state.busyId === it.id} title={t('cat.delete')} aria-label={t('cat.delete')} onClick={async () => {
+                {canDelete && (
+                  <button className="xbtn" disabled={busy || state.busyId === it.id} title={t('cat.delete')} aria-label={t('cat.delete')} onClick={async () => {
                     const label = it.name || it.code || '';
                     if (!(await confirm(t('cat.confirmDelete').replace('{name}', label)))) return;
                     setState({ busyId: it.id, error: null }, { replace: true });
                     try {
                       await cat.store.remove(it.id);
-                      setState({ busyId: null }, { replace: true });
+                      setState({ busyId: null, selected: [...selSet].filter((x) => x !== it.id) }, { replace: true });
                     } catch (e) {
                       setState({ busyId: null, error: t('cat.deleteFailed') + ': ' + e.message }, { replace: true });
                     }
@@ -331,7 +586,7 @@ function Body({ state, setState, can }) {
             </tr>
           ))}
           {!items.length && !fetching && (
-            <tr><td colSpan={schema.length + 1} className="empty">
+            <tr><td colSpan={schema.length + 1 + (canDelete ? 1 : 0)} className="empty">
               {loadError ? t('cat.loadFailed') : hasCriteria ? t('cat.noResult') : t('cat.empty')}
             </td></tr>
           )}
@@ -346,11 +601,14 @@ function Body({ state, setState, can }) {
 function View(props) {
   if (!props.can('catalog', 'read')) return <Denied />;
   // key theo danh mục: đổi danh mục thì mount lại Body, không lẫn dữ liệu giữa các danh mục
-  return <Body key={props.state.category} {...props} />;
+  return (<>
+    <style>{CSS}</style>
+    <Body key={props.state.category} {...props} />
+  </>);
 }
 
 export default { id: 'catalog', title: 'cat.title', icon: '🗂️', order: 6, messages,
-  initialState: { category: 'suppliers', editing: null, saving: false, error: null, busyId: null, pageSize: 5, ...EMPTY_VIEW },
+  initialState: { category: 'suppliers', editing: null, saving: false, error: null, busyId: null, bulkBusy: false, importing: false, pageSize: 5, ...EMPTY_VIEW },
   Menu, ribbon, View };
 
 /* ---------- CSS gợi ý (thêm vào file style chung của app) ----------
