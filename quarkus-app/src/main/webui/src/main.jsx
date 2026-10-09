@@ -13,3 +13,4 @@ const Gate = () => (useAuth().user ? <Shell /> : <Login />);
 createRoot(document.getElementById('root')).render(
   <I18nProvider><ConfirmProvider><AuthProvider><Gate /></AuthProvider></ConfirmProvider></I18nProvider>
 );
+console.log('VITE_USE_REAL_API:', import.meta.env.VITE_USE_REAL_API);

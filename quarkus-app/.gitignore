@@ -1,6 +1,7 @@
 target
 node_modules/
 .env
+.env.local
 privateKey.pem
 publicKey.pem
 rsaPrivateKey.pem
