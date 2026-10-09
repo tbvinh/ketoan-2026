@@ -78,7 +78,11 @@ Easily start your RESTful Web Services
 
 ## run 
 docker compose up -d pgadmin
+
 docker compose up -d postgres
+
+1. Change quarkus/src/main/resources/*pem-sample to *.pem
+2. Change quarkus/src/main/webui/.env.local-sample to .env.local
 
 # clean db
  quarkus_flyway_clean_at_start=true ./mvnw clean compile quarkus:dev
