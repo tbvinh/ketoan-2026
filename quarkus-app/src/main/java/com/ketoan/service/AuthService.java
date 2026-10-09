@@ -38,8 +38,8 @@ public class AuthService {
         String token = UUID.randomUUID().toString();
 
         // 4. Lưu token vào DB
-        user.token = token;
-        user.persist();
+//        user.token = token;
+//        user.persist();
 
         // 5. Trả về token cho Client
         return new AuthResponse(token);

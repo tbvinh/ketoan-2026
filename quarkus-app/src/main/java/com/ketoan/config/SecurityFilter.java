@@ -47,11 +47,11 @@ public class SecurityFilter implements ContainerRequestFilter {
         String token = tokenCookie.getValue();
 
         // Kiểm tra token trong DB
-        User user = User.findByToken(token);
-        if (user == null) {
-            requestContext.abortWith(Response.status(Response.Status.UNAUTHORIZED)
-                    .entity("{\"error\": \"Token không hợp lệ\"}")
-                    .build());
-        }
+//        User user = User.findByToken(token);
+//        if (user == null) {
+//            requestContext.abortWith(Response.status(Response.Status.UNAUTHORIZED)
+//                    .entity("{\"error\": \"Token không hợp lệ\"}")
+//                    .build());
+//        }
     }
 }

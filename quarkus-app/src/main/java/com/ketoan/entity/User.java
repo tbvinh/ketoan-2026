@@ -29,14 +29,14 @@ public class User extends PanacheEntityBase {
     public String username;
     public String password;
     public String role;
-    public String token;
+//    public String token;
 
     public static User findByUsername(String username) {
         return find("username", username).firstResult();
     }
 
-    public static User findByToken(String token) {
-        return find("token", token).firstResult();
-    }
+//    public static User findByToken(String token) {
+//        return find("token", token).firstResult();
+//    }
 }
 

@@ -5,9 +5,8 @@ ALTER TABLE users
 
 --password = 123
 INSERT INTO users (username, password, role) VALUES  
-    ('admin', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'ADMIN'),
-    ('user1', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'USER'),
-    ('vinhtran', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'USER');
+    ('admin', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'admin'),
+    ('user1', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'user'),
+    ('vinhtran', '$2a$10$FezjqxqiO09kuw87QQW1sOMMvvnmKKVCtTluhh./Q2oUMA5k9upl6', 'user');
 
 
-ALTER TABLE users ADD COLUMN token VARCHAR(255);
