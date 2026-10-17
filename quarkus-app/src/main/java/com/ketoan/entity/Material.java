@@ -17,4 +17,7 @@ import jakarta.persistence.Table;
     public long price;
     @Column(name = "type_id")    // đặt tên cột tường minh để khớp migration, không phụ thuộc naming strategy
     public String typeId;          // id của MaterialType (chuỗi)
+
+    @Column(name = "image_url")
+    public String imageUrl;        // /uploads/{company}/{type}/{file} hoặc /uploads/samples/...
 }

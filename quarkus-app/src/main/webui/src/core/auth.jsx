@@ -1,5 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { apiFetch, setUnauthorizedHandler } from './api.js';
+import { configureHttp } from './http.js';
+import { resetAllStores } from './masterdata.js';
+import { setPermissions, clearPermissions } from './permissions.js';
+import { clearTenant } from './tenant.js';
 
 // Đổi đường dẫn cho khớp với @Path của resource phía Java.
 // Token nằm trong cookie HttpOnly do server set, JS không đọc/ghi được => KHÔNG lưu token ở localStorage nữa.
@@ -19,25 +23,34 @@ const isMissing = (e) => e?.status === 404 || e?.status === 405;
 const readCached = () => {
   try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; }
 };
-// Chuyển dữ liệu từ server sang dạng user của app; chỉnh tên field ở đây nếu /me trả khác
-const toInfo = (d) => ({ username: d.username, name: d.name ?? d.username, role: d.role ?? 'user' });
+// Chuyển dữ liệu từ server sang dạng user của app; quyền chi tiết đi kèm /me
+const toInfo = (d) => ({ username: d.username, name: d.name ?? d.username, role: d.role ?? 'user', permissions: d.permissions });
 
 const Ctx = createContext();
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(readCached);
 
-  const persist = (info) => { localStorage.setItem(KEY, JSON.stringify(info)); setUser(info); };
+  const persist = (info) => {
+    setPermissions(info.permissions ?? {});
+    localStorage.setItem(KEY, JSON.stringify(info));
+    setUser(info);
+  };
 
   // Xóa phiên phía client + xóa phần `#...` sau URL
   const clearSession = () => {
     localStorage.removeItem(KEY);
+    clearPermissions();
+    clearTenant();
     setUser(null);
+    resetAllStores();   // xoá cache danh mục + phiếu kho (FE-ST6): không để lộ dữ liệu của người dùng trước
     history.replaceState(null, '', window.location.pathname);
   };
 
-  // Mọi request bị 401 (cookie hết hạn/không hợp lệ) => tự về màn hình đăng nhập
+  // Mọi request bị 401 (cookie hết hạn/không hợp lệ) => tự về màn hình đăng nhập.
+  // Gồm cả các request đi qua http.js (store danh mục / API kho) — trước đây chúng "chết im lặng" (FE-AP12).
   useEffect(() => {
     setUnauthorizedHandler(clearSession);
+    configureHttp({ onUnauthorized: clearSession });
     return () => setUnauthorizedHandler(null);
   }, []);
 
@@ -64,7 +77,7 @@ export function AuthProvider({ children }) {
       info = toInfo(await apiFetch(AUTH.me, { silent401: true }));
     } catch (e) {
       if (!isMissing(e)) throw e;   // 401 ở đây thường nghĩa là cookie không được lưu (xem mục CORS/Secure)
-      info = { username, name: username, role: TEMP_ROLES[username] ?? 'user' };   // TẠM THỜI, xem ghi chú trên
+      info = { username, name: username, role: TEMP_ROLES[username] ?? 'user', permissions: {} };   // TẠM THỜI, xem ghi chú trên
     }
     persist(info);
   };

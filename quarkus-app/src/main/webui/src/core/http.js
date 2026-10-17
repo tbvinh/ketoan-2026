@@ -1,5 +1,7 @@
 // HTTP client mỏng bọc fetch: gắn token, parse JSON, ném HttpError thống nhất.
 // Vite: đặt VITE_API_URL trong .env (mặc định '/api'). CRA: đổi thành process.env.REACT_APP_API_URL.
+import { tenantHeaders } from './tenant.js';
+
 const BASE = import.meta.env?.VITE_API_URL ?? '/api';
 
 export class HttpError extends Error {
@@ -24,12 +26,13 @@ async function request(method, path, { body, signal } = {}) {
   try {
     res = await fetch(BASE + path, {
       method,
+      credentials: 'include',
       headers: {
         Accept: 'application/json',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...tenantHeaders(),
       },
-      // Nếu dùng cookie httpOnly thay cho token: bỏ Authorization ở trên và thêm  credentials: 'include'
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
     });
@@ -53,3 +56,28 @@ export const http = {
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
   delete: (path, opts) => request('DELETE', path, opts),
 };
+
+// Tải file nhị phân (Excel/CSV) bằng cookie phiên rồi lưu về máy.
+export async function downloadFile(path, filename) {
+  let res;
+  try {
+    res = await fetch(BASE + path, { credentials: 'include', headers: tenantHeaders() });
+  } catch (e) {
+    throw new HttpError(0, 'Không kết nối được máy chủ');
+  }
+
+  if (res.status === 401) onUnauthorized();
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new HttpError(res.status, data?.message ?? data?.error ?? res.statusText, data);
+  }
+
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

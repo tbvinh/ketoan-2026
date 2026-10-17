@@ -4,30 +4,52 @@ import { Loading } from '../../core/ui.jsx';
 import Denied from '../../core/Denied.jsx';
 import { useConfirm } from '../../core/confirm.jsx';
 import {
-  suppliersStore, customersStore, banksStore, materialTypesStore, materialsStore, accountsStore, vnd,
+  suppliersStore, customersStore, warehousesStore, banksStore, materialTypesStore, materialsStore, accountsStore,
+  departmentsStore, employeesStore, unitsStore, partnersStore, closingEntriesStore, vnd,
 } from '../../core/masterdata.js';
+import { useDebounced } from '../../core/useDebounced.js';
+import { downloadFile } from '../../core/http.js';
+import { apiFetch } from '../../core/api.js';
+import MediaUpload from '../../core/MediaUpload.jsx';
 
 const CATS = [
-  { id: 'suppliers', icon: '🚚', store: suppliersStore },
-  { id: 'customers', icon: '🧑‍💼', store: customersStore },
-  { id: 'materials', icon: '📦', store: materialsStore },
-  { id: 'materialTypes', icon: '🏷️', store: materialTypesStore },
-  { id: 'banks', icon: '🏦', store: banksStore },
-  { id: 'accounts', icon: '📒', store: accountsStore },
+  { id: 'customers', icon: '🧑‍💼', store: customersStore, path: '/customers' },
+  { id: 'banks', icon: '🏦', store: banksStore, path: '/banks' },
+  { id: 'employees', icon: '👨‍💼', store: employeesStore, path: '/employees' },
+  { id: 'closingEntries', icon: '🔁', store: closingEntriesStore, path: '/closing-entries' },
+  { id: 'materials', icon: '📦', store: materialsStore, path: '/materials' },
+  { id: 'accounts', icon: '📒', store: accountsStore, path: '/accounts' },
+  { id: 'units', icon: '📏', store: unitsStore, path: '/units' },
+  { id: 'partners', icon: '🤝', store: partnersStore, path: '/partners' },
+  { id: 'departments', icon: '🏢', store: departmentsStore, path: '/departments' },
+  { id: 'warehouses', icon: '🏭', store: warehousesStore, path: '/warehouses' },
+  { id: 'materialTypes', icon: '🏷️', store: materialTypesStore, path: '/material-types' },
+  { id: 'suppliers', icon: '🚚', store: suppliersStore, path: '/suppliers' },
+];
+
+const PARTNER_KINDS = [
+  { value: 'customer', labelKey: 'cat.kindCustomer' },
+  { value: 'supplier', labelKey: 'cat.kindSupplier' },
+  { value: 'both', labelKey: 'cat.kindBoth' },
+  { value: 'other', labelKey: 'cat.kindOther' },
 ];
 
 const messages = {
   vi: {
     'cat.title': 'Danh mục', 'cat.suppliers': 'Nhà cung cấp', 'cat.customers': 'Khách hàng', 'cat.materials': 'Vật tư',
-    'cat.materialTypes': 'Loại vật tư', 'cat.banks': 'Ngân hàng', 'cat.accounts': 'Tài khoản kế toán',
+    'cat.materialTypes': 'Nhóm vật tư', 'cat.banks': 'Ngân hàng', 'cat.accounts': 'Tài khoản kế toán', 'cat.warehouses': 'Kho hàng',
+    'cat.employees': 'Nhân viên', 'cat.closingEntries': 'Kết chuyển', 'cat.units': 'Đơn vị tính', 'cat.partners': 'Đối tượng', 'cat.departments': 'Phòng ban',
     'cat.code': 'Mã', 'cat.name': 'Tên', 'cat.phone': 'Điện thoại', 'cat.address': 'Địa chỉ',
-    'cat.bankCode': 'Mã NH', 'cat.branch': 'Chi nhánh', 'cat.unit': 'Đơn vị tính', 'cat.price': 'Đơn giá', 'cat.type': 'Loại vật tư',
+    'cat.bankCode': 'Mã NH', 'cat.branch': 'Chi nhánh', 'cat.unit': 'Đơn vị tính', 'cat.price': 'Đơn giá', 'cat.type': 'Nhóm vật tư',
+    'cat.email': 'Email', 'cat.position': 'Chức vụ', 'cat.department': 'Phòng ban', 'cat.manager': 'Trưởng phòng',
+    'cat.fromAccount': 'TK nguồn', 'cat.toAccount': 'TK đích', 'cat.description': 'Diễn giải', 'cat.kind': 'Loại đối tượng',
+    'cat.kindCustomer': 'Khách hàng', 'cat.kindSupplier': 'Nhà cung cấp', 'cat.kindBoth': 'Cả hai', 'cat.kindOther': 'Khác',
     'cat.accCode': 'Số hiệu TK', 'cat.new': 'Thêm mới', 'cat.edit': 'Sửa', 'cat.save': 'Lưu', 'cat.cancel': 'Hủy',
-    'cat.empty': 'Chưa có dữ liệu.', 'cat.newType': 'Thêm loại vật tư mới',
+    'cat.empty': 'Chưa có dữ liệu.', 'cat.newType': 'Thêm nhóm vật tư mới',
     'cat.search': 'Tìm theo mã, tên, địa chỉ…', 'cat.all': 'Tất cả', 'cat.clear': 'Xóa bộ lọc',
     'cat.noResult': 'Không có kết quả phù hợp.', 'cat.range': 'Hiển thị {from}–{to} / {total}',
     'cat.priceFrom': 'Giá từ', 'cat.priceTo': 'Giá đến', 'cat.hasPhone': 'Có điện thoại', 'cat.noPhone': 'Chưa có điện thoại',
-    'cat.accGroup': 'Nhóm TK',
+    'cat.accGroup': 'Nhóm TK', 'cat.image': 'Ảnh minh họa',
     'cat.saving': 'Đang lưu…', 'cat.saveFailed': 'Không thể lưu', 'cat.deleteFailed': 'Không thể xóa', 'cat.loadFailed': 'Không tải được dữ liệu', 'cat.retry': 'Thử lại',
     'cat.perPage': 'Dòng/trang', 'cat.pageOf': 'Trang {p} / {n}', 'cat.first': 'Trang đầu', 'cat.prev': 'Trang trước', 'cat.next': 'Trang sau', 'cat.last': 'Trang cuối',
     'cat.delete': 'Xóa', 'cat.confirmDelete': 'Bạn có chắc muốn xóa "{name}"? Thao tác này không thể hoàn tác.',
@@ -36,22 +58,27 @@ const messages = {
     'cat.importBusy': 'Đang import…', 'cat.importDone': 'Đã import {n} dòng.', 'cat.importErrors': '{n} lỗi (các dòng lỗi được bỏ qua):',
     'cat.errEmpty': 'File trống', 'cat.errRead': 'Không đọc được file', 'cat.errHeader': 'File thiếu cột bắt buộc: {cols}',
     'cat.errLine': 'Dòng {line}: {msg}', 'cat.errRequired': 'Thiếu "{field}"', 'cat.errPrice': 'Đơn giá không hợp lệ',
-    'cat.errDup': 'Trùng trong file: "{name}"', 'cat.errNoType': 'Không tìm thấy loại vật tư "{name}"',
+    'cat.errDup': 'Trùng trong file: "{name}"', 'cat.errNoType': 'Không tìm thấy nhóm vật tư "{name}"',
     'cat.selectAll': 'Chọn tất cả trên trang', 'cat.selectRow': 'Chọn dòng', 'cat.selected': 'Đã chọn {n} dòng', 'cat.clearSel': 'Bỏ chọn',
     'cat.deleteSelected': 'Xóa đã chọn', 'cat.confirmBulkDelete': 'Bạn có chắc muốn xóa {n} dòng đã chọn? Thao tác này không thể hoàn tác.',
     'cat.bulkFailed': 'Không xóa được {n}/{total} dòng',
+    'cat.exportExcel': 'Xuất Excel', 'cat.exportFailed': 'Không xuất được Excel',
   },
   en: {
     'cat.title': 'Master Data', 'cat.suppliers': 'Suppliers', 'cat.customers': 'Customers', 'cat.materials': 'Materials',
-    'cat.materialTypes': 'Material Types', 'cat.banks': 'Banks', 'cat.accounts': 'Accounting Accounts',
+    'cat.materialTypes': 'Item groups', 'cat.banks': 'Banks', 'cat.accounts': 'Accounting Accounts', 'cat.warehouses': 'Warehouses',
+    'cat.employees': 'Employees', 'cat.closingEntries': 'Closing entries', 'cat.units': 'Units of measure', 'cat.partners': 'Partners', 'cat.departments': 'Departments',
     'cat.code': 'Code', 'cat.name': 'Name', 'cat.phone': 'Phone', 'cat.address': 'Address',
-    'cat.bankCode': 'Bank code', 'cat.branch': 'Branch', 'cat.unit': 'Unit', 'cat.price': 'Price', 'cat.type': 'Material type',
+    'cat.bankCode': 'Bank code', 'cat.branch': 'Branch', 'cat.unit': 'Unit', 'cat.price': 'Price', 'cat.type': 'Item group',
+    'cat.email': 'Email', 'cat.position': 'Position', 'cat.department': 'Department', 'cat.manager': 'Manager',
+    'cat.fromAccount': 'From account', 'cat.toAccount': 'To account', 'cat.description': 'Description', 'cat.kind': 'Partner type',
+    'cat.kindCustomer': 'Customer', 'cat.kindSupplier': 'Supplier', 'cat.kindBoth': 'Both', 'cat.kindOther': 'Other',
     'cat.accCode': 'Account no.', 'cat.new': 'Add new', 'cat.edit': 'Edit', 'cat.save': 'Save', 'cat.cancel': 'Cancel',
-    'cat.empty': 'No data yet.', 'cat.newType': 'Add new material type',
+    'cat.empty': 'No data yet.', 'cat.newType': 'Add new item group',
     'cat.search': 'Search by code, name, address…', 'cat.all': 'All', 'cat.clear': 'Clear filters',
     'cat.noResult': 'No matching results.', 'cat.range': 'Showing {from}–{to} of {total}',
     'cat.priceFrom': 'Price from', 'cat.priceTo': 'Price to', 'cat.hasPhone': 'Has phone', 'cat.noPhone': 'No phone',
-    'cat.accGroup': 'Account group',
+    'cat.accGroup': 'Account group', 'cat.image': 'Image',
     'cat.saving': 'Saving…', 'cat.saveFailed': 'Could not save', 'cat.deleteFailed': 'Could not delete', 'cat.loadFailed': 'Could not load data', 'cat.retry': 'Retry',
     'cat.perPage': 'Rows/page', 'cat.pageOf': 'Page {p} / {n}', 'cat.first': 'First page', 'cat.prev': 'Previous page', 'cat.next': 'Next page', 'cat.last': 'Last page',
     'cat.delete': 'Delete', 'cat.confirmDelete': 'Are you sure you want to delete "{name}"? This cannot be undone.',
@@ -60,10 +87,11 @@ const messages = {
     'cat.importBusy': 'Importing…', 'cat.importDone': 'Imported {n} rows.', 'cat.importErrors': '{n} errors (failed rows were skipped):',
     'cat.errEmpty': 'File is empty', 'cat.errRead': 'Could not read file', 'cat.errHeader': 'Missing required columns: {cols}',
     'cat.errLine': 'Row {line}: {msg}', 'cat.errRequired': '"{field}" is missing', 'cat.errPrice': 'Invalid price',
-    'cat.errDup': 'Duplicate in file: "{name}"', 'cat.errNoType': 'Material type "{name}" not found',
+    'cat.errDup': 'Duplicate in file: "{name}"', 'cat.errNoType': 'Item group "{name}" not found',
     'cat.selectAll': 'Select all on this page', 'cat.selectRow': 'Select row', 'cat.selected': '{n} selected', 'cat.clearSel': 'Clear selection',
     'cat.deleteSelected': 'Delete selected', 'cat.confirmBulkDelete': 'Are you sure you want to delete {n} selected rows? This cannot be undone.',
     'cat.bulkFailed': 'Could not delete {n}/{total} rows',
+    'cat.exportExcel': 'Export Excel', 'cat.exportFailed': 'Could not export Excel',
   },
 };
 
@@ -77,17 +105,24 @@ const PAGE_SIZES = [5, 10, 20, 50, 100];
 
 // Bộ lọc gửi thẳng lên server dưới dạng query string: ?typeId=..&priceMin=..
 //   kind: 'select' (options tĩnh) | 'number' | 'text'
-function filtersFor(id, t, types) {
+function filtersFor(id, t, types, depts) {
   if (id === 'materials') return [
     { key: 'typeId', kind: 'select', label: t('cat.type'), options: types.map((x) => ({ value: x.id, label: x.name })) },
     { key: 'priceMin', kind: 'number', label: t('cat.priceFrom') },
     { key: 'priceMax', kind: 'number', label: t('cat.priceTo') },
+  ];
+  if (id === 'employees') return [
+    { key: 'departmentId', kind: 'select', label: t('cat.department'), options: depts.map((x) => ({ value: x.id, label: x.name })) },
+  ];
+  if (id === 'partners') return [
+    { key: 'kind', kind: 'select', label: t('cat.kind'), options: PARTNER_KINDS.map((k) => ({ value: k.value, label: t(k.labelKey) })) },
   ];
   if (id === 'suppliers' || id === 'customers') return [
     { key: 'phone', kind: 'select', label: t('cat.phone'),
       options: [{ value: 'has', label: t('cat.hasPhone') }, { value: 'none', label: t('cat.noPhone') }] },
   ];
   if (id === 'banks') return [{ key: 'branch', kind: 'text', label: t('cat.branch') }];
+  if (id === 'warehouses') return [{ key: 'address', kind: 'text', label: t('cat.address') }];
   if (id === 'accounts') return [
     // Nhóm tài khoản theo chữ số đầu của số hiệu: 1xx … 9xx
     { key: 'group', kind: 'select', label: t('cat.accGroup'),
@@ -96,23 +131,19 @@ function filtersFor(id, t, types) {
   return []; // materialTypes: chỉ tìm kiếm
 }
 
-// Trì hoãn giá trị để không gọi API mỗi lần gõ phím.
-function useDebounced(value, ms = 300) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(id);
-  }, [value, ms]);
-  return v;
-}
+// Trì hoãn giá trị để không gọi API mỗi lần gõ phím (dùng chung: core/useDebounced.js)
+// (đã chuyển sang core — xem RULES.md FE-PL16)
 
 /* ---------- Cấu hình cột ---------- */
 
 // sortKey: tên field gửi lên server khi sắp xếp (mặc định = key). Riêng "Loại vật tư" sắp theo tên loại.
-function schemaFor(id, t, types) {
+function schemaFor(id, t, types, depts) {
   if (id === 'materials') return [
     { key: 'code', label: t('cat.code') },
-    { key: 'name', label: t('cat.name') },
+    { key: 'name', label: t('cat.name'), display: (it) => (
+      <span className="medianame">
+        {it.imageUrl ? <img src={it.imageUrl} alt="" /> : null}{it.name}
+      </span>) },
     { key: 'unit', label: t('cat.unit') },
     { key: 'price', label: t('cat.price'), type: 'number', display: (it) => vnd(it.price) },
     { key: 'typeId', label: t('cat.type'), sortKey: 'typeName',
@@ -128,10 +159,55 @@ function schemaFor(id, t, types) {
             if (n) { try { const created = await materialTypesStore.add({ name: n }); update({ typeId: created.id }); } catch (e) { alert(t('cat.saveFailed') + ': ' + e.message); } }
           }}>➕</button>
         </div>) },
+    { key: 'imageUrl', label: t('cat.image'),
+      render: (editing, update) => (
+        <MediaUpload type="products" value={editing.imageUrl ?? ''} onChange={(url) => update({ imageUrl: url })} />
+      ) },
   ];
   if (id === 'materialTypes') return [{ key: 'name', label: t('cat.name') }];
   if (id === 'banks') return [{ key: 'code', label: t('cat.bankCode') }, { key: 'name', label: t('cat.name') }, { key: 'branch', label: t('cat.branch') }];
+  if (id === 'warehouses') return [{ key: 'code', label: t('cat.code') }, { key: 'name', label: t('cat.name') }, { key: 'address', label: t('cat.address') }];
   if (id === 'accounts') return [{ key: 'code', label: t('cat.accCode') }, { key: 'name', label: t('cat.name') }];
+  if (id === 'employees') return [
+    { key: 'code', label: t('cat.code') },
+    { key: 'name', label: t('cat.name') },
+    { key: 'phone', label: t('cat.phone') },
+    { key: 'email', label: t('cat.email') },
+    { key: 'position', label: t('cat.position') },
+    { key: 'departmentId', label: t('cat.department'),
+      display: (it) => depts.find((x) => x.id === it.departmentId)?.name ?? '',
+      render: (editing, update) => (
+        <select value={editing.departmentId ?? ''} onChange={(e) => update({ departmentId: e.target.value })}>
+          <option value="">--</option>
+          {depts.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>) },
+  ];
+  if (id === 'departments') return [
+    { key: 'code', label: t('cat.code') },
+    { key: 'name', label: t('cat.name') },
+    { key: 'manager', label: t('cat.manager') },
+    { key: 'phone', label: t('cat.phone') },
+  ];
+  if (id === 'units') return [{ key: 'code', label: t('cat.code') }, { key: 'name', label: t('cat.unit') }];
+  if (id === 'partners') return [
+    { key: 'code', label: t('cat.code') },
+    { key: 'name', label: t('cat.name') },
+    { key: 'phone', label: t('cat.phone') },
+    { key: 'address', label: t('cat.address') },
+    { key: 'kind', label: t('cat.kind'),
+      display: (it) => t(PARTNER_KINDS.find((k) => k.value === it.kind)?.labelKey ?? 'cat.kindOther'),
+      render: (editing, update) => (
+        <select value={editing.kind ?? 'other'} onChange={(e) => update({ kind: e.target.value })}>
+          {PARTNER_KINDS.map((k) => <option key={k.value} value={k.value}>{t(k.labelKey)}</option>)}
+        </select>) },
+  ];
+  if (id === 'closingEntries') return [
+    { key: 'code', label: t('cat.code') },
+    { key: 'name', label: t('cat.name') },
+    { key: 'fromAccount', label: t('cat.fromAccount') },
+    { key: 'toAccount', label: t('cat.toAccount') },
+    { key: 'description', label: t('cat.description') },
+  ];
   return [{ key: 'code', label: t('cat.code') }, { key: 'name', label: t('cat.name') }, { key: 'phone', label: t('cat.phone') }, { key: 'address', label: t('cat.address') }]; // suppliers/customers
 }
 
@@ -141,11 +217,20 @@ function schemaFor(id, t, types) {
 const IMPORT_SPEC = {
   suppliers: { cols: ['code', 'name', 'phone', 'address'], required: ['name'], sample: ['NCC001', 'NCC Phong Vũ', '0901234567', 'TP.HCM'] },
   customers: { cols: ['code', 'name', 'phone', 'address'], required: ['name'], sample: ['KH001', 'Công ty TNHH ABC', '0907654321', 'Hà Nội'] },
+  warehouses: { cols: ['code', 'name', 'address'], required: ['name'], sample: ['KHO001', 'Kho trung tâm', 'TP.HCM'] },
   materials: { cols: ['code', 'name', 'unit', 'price', 'type'], required: ['name'], sample: ['VT001', 'Bàn phím cơ', 'cái', '700000', 'Phụ kiện'] },
   materialTypes: { cols: ['name'], required: ['name'], sample: ['Phụ kiện'] },
   banks: { cols: ['code', 'name', 'branch'], required: ['code', 'name'], sample: ['VCB', 'Vietcombank', 'Chi nhánh TP.HCM'] },
   accounts: { cols: ['code', 'name'], required: ['code', 'name'], sample: ['111', 'Tiền mặt'] },
+  employees: { cols: ['code', 'name', 'phone', 'email', 'position'], required: ['name'], sample: ['NV001', 'Nguyễn Văn A', '0901234567', 'a@congty.vn', 'Kế toán viên'] },
+  departments: { cols: ['code', 'name', 'manager', 'phone'], required: ['name'], sample: ['PB001', 'Phòng Kế toán', 'Trần Thị Hoa', '024 3852 1188'] },
+  units: { cols: ['code', 'name'], required: ['name'], sample: ['DVT001', 'Cái'] },
+  partners: { cols: ['code', 'name', 'phone', 'address', 'kind'], required: ['name'], sample: ['DT001', 'Công ty ABC', '0901234567', 'TP.HCM', 'customer'] },
+  closingEntries: { cols: ['code', 'name', 'from_account', 'to_account', 'description'], required: ['name'], sample: ['KC001', 'Kết chuyển doanh thu', '511', '911', 'Cuối kỳ'] },
 };
+
+// Chuyển tên cột CSV snake_case sang field của entity (from_account -> fromAccount)
+const camel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 
 const norm = (s) => (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd').replace(/Đ/g, 'd').replace(/\s+/g, ' ').toLowerCase().trim();
@@ -193,7 +278,7 @@ const parseNum = (v) => {
 };
 
 // Trả về { ok, errors }. Dòng lỗi bị bỏ qua, các dòng hợp lệ vẫn được thêm.
-async function importRows(text, { catId, store, types, can, t }) {
+async function importRows(text, { catId, path, types, can, t }) {
   const spec = IMPORT_SPEC[catId];
   const rows = parseCsv(text);
   if (!rows.length) return { ok: 0, errors: [t('cat.errEmpty')] };
@@ -213,7 +298,7 @@ async function importRows(text, { catId, store, types, can, t }) {
     const r = rows[i];
     const line = i + 1;
     const rec = {};
-    spec.cols.forEach((c) => { if (c !== 'type' && idx[c] >= 0) rec[c] = cell(r, c); });
+    spec.cols.forEach((c) => { if (c !== 'type' && idx[c] >= 0) rec[camel(c)] = cell(r, c); });
 
     const lack = spec.required.find((c) => !cell(r, c));
     if (lack) { err(line, t('cat.errRequired').replace('{field}', lack)); continue; }
@@ -239,7 +324,7 @@ async function importRows(text, { catId, store, types, can, t }) {
       }
     }
 
-    try { await store.add(rec); seen.add(key); ok++; }
+    try { await apiFetch('/api' + path + '/import', { method: 'POST', body: [rec] }); seen.add(key); ok++; }
     catch (e) { err(line, e?.message ?? String(e)); }
   }
   return { ok, errors };
@@ -279,7 +364,7 @@ function Menu({ state, setState }) {
 const ribbon = ({ setState, can }) => ({
   tabs: [{ id: 'catalog', title: 'cat.title', groups: [{ id: 'actions', title: 'cat.newGroup', items: [
     { id: 'cat-new', icon: '➕', label: 'cat.new', disabled: !can('catalog', 'create'), onClick: () => setState({ editing: {}, error: null, importing: false }) },
-    { id: 'cat-import', icon: '📂', label: 'cat.importFile', disabled: !can('catalog', 'create'), onClick: () => setState({ editing: null, importing: true }) },
+    { id: 'cat-import', icon: '📂', label: 'cat.importFile', disabled: !can('catalog', 'import'), onClick: () => setState({ editing: null, importing: true }) },
   ] }] }],
 });
 
@@ -355,8 +440,10 @@ function Body({ state, setState, can }) {
   const { t } = useI18n();
   const confirm = useConfirm();
   const cat = CATS.find((c) => c.id === state.category);
-  const types = materialTypesStore.use().items;   // danh sách nhỏ, tải đủ để đổ dropdown và hiển thị tên loại
+  const types = materialTypesStore.use().items;   // danh sách nhỏ, tải đủ để đổ dropdown và hiển thị tên nhóm
+  const depts = departmentsStore.use().items;     // dùng cho bộ lọc và form Nhân viên
   const [imp, setImp] = useState({ busy: false, result: null, key: 0 });
+  const [exporting, setExporting] = useState(false);
 
   const q = state.q ?? '';
   const filters = state.filters ?? NO_FILTERS;
@@ -384,8 +471,8 @@ function Body({ state, setState, can }) {
 
   if (loading) return <Loading />;
 
-  const schema = schemaFor(cat.id, t, types);
-  const filterDefs = filtersFor(cat.id, t, types);
+  const schema = schemaFor(cat.id, t, types, depts);
+  const filterDefs = filtersFor(cat.id, t, types, depts);
   const editing = state.editing;
 
   if (editing) {
@@ -460,13 +547,27 @@ function Body({ state, setState, can }) {
     reload();
   };
 
+  // ----- Xuất Excel -----
+  // Server trả toàn bộ danh mục (không phân trang) dưới dạng .xlsx; tải bằng cookie phiên.
+  const onExportExcel = async () => {
+    setExporting(true);
+    setState({ error: null }, { replace: true });
+    try {
+      await downloadFile(`/master/${cat.id}/export-excel`, `master-${cat.id}.xlsx`);
+    } catch (e) {
+      setState({ error: t('cat.exportFailed') + ': ' + e.message }, { replace: true });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ----- Import -----
   const onFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImp((s) => ({ ...s, busy: true, result: null }));
     let result;
-    try { result = await importRows(await file.text(), { catId: cat.id, store: cat.store, types, can, t }); }
+    try { result = await importRows(await file.text(), { catId: cat.id, path: cat.path, types, can, t }); }
     catch (err) { result = { ok: 0, errors: [t('cat.errRead') + ': ' + (err?.message ?? err)] }; }
     setImp((s) => ({ busy: false, result, key: s.key + 1 }));   // đổi key để chọn lại cùng 1 file vẫn chạy
     if (result.ok) { setState({ ...EMPTY_VIEW }, { replace: true }); reload(); }
@@ -484,14 +585,19 @@ function Body({ state, setState, can }) {
       <div className="ghead">
         <h2>{t('cat.' + cat.id)}</h2>
         <div>
-          {can('catalog', 'create') && (
+          {can('catalog', 'export') && (
+            <button className="tb" disabled={exporting} onClick={onExportExcel}>
+              {exporting ? '⏳' : '⬇'} {t('cat.exportExcel')}
+            </button>
+          )}{' '}
+          {can('catalog', 'import') && (
             <button className="tb" onClick={() => setState({ importing: !state.importing }, { replace: true })}>📂 {t('cat.importFile')}</button>
           )}{' '}
           {can('catalog', 'create') && <button className="tb" onClick={() => setState({ editing: {}, error: null })}>➕ {t('cat.new')}</button>}
         </div>
       </div>
 
-      {state.importing && can('catalog', 'create') && (
+      {state.importing && can('catalog', 'import') && (
         <div className="importbox">
           <div className="importhead">
             <b>{t('cat.importTitle')} — {t('cat.' + cat.id)}</b>
@@ -608,7 +714,7 @@ function View(props) {
 }
 
 export default { id: 'catalog', title: 'cat.title', icon: '🗂️', order: 6, messages,
-  initialState: { category: 'suppliers', editing: null, saving: false, error: null, busyId: null, bulkBusy: false, importing: false, pageSize: 5, ...EMPTY_VIEW },
+  initialState: { category: 'customers', editing: null, saving: false, error: null, busyId: null, bulkBusy: false, importing: false, pageSize: 5, ...EMPTY_VIEW },
   Menu, ribbon, View };
 
 /* ---------- CSS gợi ý (thêm vào file style chung của app) ----------

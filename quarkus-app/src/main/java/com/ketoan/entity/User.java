@@ -11,7 +11,9 @@ package com.ketoan.entity;
 
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -19,7 +21,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", schema = "public")
 public class User extends PanacheEntityBase {
 
     @Id
@@ -27,8 +29,19 @@ public class User extends PanacheEntityBase {
     public Long id;
 
     public String username;
+
+    @JsonIgnore
     public String password;
+
     public String role;
+
+    @Column(name = "full_name")
+    public String fullName;
+
+    @Column(name = "image_url")
+    public String imageUrl;
+
+    public Boolean active = true;
 //    public String token;
 
     public static User findByUsername(String username) {

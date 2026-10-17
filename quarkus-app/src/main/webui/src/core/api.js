@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tenantHeaders } from './tenant.js';
 
 // Giả lập gọi API: trả dữ liệu sau ~1 giây
 export const fakeApi = (data, ms = 800) =>
@@ -22,6 +23,7 @@ export function useApi(fetcher, deps) {
 
 // '' = cùng origin (nên dùng proxy của Vite khi dev). Nếu backend khác origin: VITE_API_BASE=http://localhost:8080
 const API_BASE = import.meta.env?.VITE_API_BASE ?? '';
+export { API_BASE };
 
 export class ApiError extends Error {
   constructor(status, message, data) {
@@ -35,6 +37,7 @@ export class ApiError extends Error {
 // Khi server trả 401 (cookie hết hạn/không hợp lệ), auth.jsx đăng ký hàm này để đưa người dùng về màn hình đăng nhập.
 let onUnauthorized = null;
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
+export const handleUnauthorized = () => onUnauthorized?.();
 
 /**
  * apiFetch('/api/xxx', { method, body, headers, silent401 })
@@ -51,6 +54,7 @@ export async function apiFetch(path, { method = 'GET', body, headers, silent401 
       headers: {
         Accept: 'application/json',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...tenantHeaders(),
         ...headers,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

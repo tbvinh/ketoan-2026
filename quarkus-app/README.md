@@ -77,6 +77,11 @@ Easily start your RESTful Web Services
 //   (xóa rsaPrivateKey.pem; KHÔNG commit privateKey.pem lên git, production nên nạp từ secret/đường dẫn ngoài)
 
 ## run 
+
+docker compose --env-file .env up postgres nginx -d
+
+docker compose up -d --force-recreate app
+
 docker compose up -d pgadmin
 
 docker compose up -d postgres

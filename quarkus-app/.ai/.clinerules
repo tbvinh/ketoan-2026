@@ -1,0 +1,54 @@
+# Development Rules
+
+1. Follow existing architecture.
+2. Follow existing naming conventions.
+3. Reuse existing services and components.
+4. Never duplicate business logic.
+5. Never create duplicate APIs.
+6. Make minimal code changes.
+7. Avoid changing unrelated files.
+8. Keep code production ready.
+9. Prefer existing patterns over creating new ones.
+10. Generate clean, maintainable code.
+11. Read only files directly related to the task.
+12. Consider security implications.
+13. Consider performance implications.
+
+# Token Optimization
+
+14. Do not analyze the entire project unless explicitly requested.
+15. Do not explain architecture unless requested.
+16. Do not generate reports unless requested.
+17. Do not restate previous findings.
+18. Do not explain obvious code changes.
+19. Keep responses under 10 lines unless requested.
+20. Investigate only the reported issue.
+21. Read the minimum number of files required.
+22. Do not create design documents automatically.
+23. Do not summarize code unless requested.
+24. Assume PROJECT_GUIDE.md is the source of truth.
+25. Assume previous root-cause analysis is valid unless asked to re-check.
+
+# Debug Mode
+
+26. Reproduce the issue first.
+27. Identify root cause.
+28. If root cause is known, skip analysis.
+29. Fix only the root cause.
+30. Verify the fix.
+
+# Output Format
+
+31. Default output format:
+
+Root cause:
+...
+
+Files changed:
+...
+
+Verification:
+PASS/FAIL
+
+32. No explanations unless requested.
+33. No markdown reports unless requested.

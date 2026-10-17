@@ -7,6 +7,7 @@ package com.ketoan.resource;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ketoan.entity.MasterEntity;
+import com.ketoan.service.PermissionService;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -48,10 +49,12 @@ public abstract class MasterResource<T extends MasterEntity> {
 
     @Inject protected EntityManager em;
     @Inject protected ObjectMapper mapper;
+    @Inject protected PermissionService permissions;
 
     // --- mỗi danh mục khai báo ---
     protected abstract Class<T> type();
     protected abstract List<String> searchFields();                     // field dùng cho ô tìm kiếm q
+    protected String module() { return "catalog"; }                     // khoá quyền tương ứng (RBAC)
     protected String codePrefix() { return null; }                      // "NCC" => tự sinh mã NCC0001 khi code trống
     protected boolean codeRequired() { return false; }                  // tài khoản kế toán bắt buộc nhập số hiệu
     protected String from() { return "from " + type().getSimpleName() + " e"; }
@@ -79,6 +82,7 @@ public abstract class MasterResource<T extends MasterEntity> {
                                     @QueryParam("sort") String sort,
                                     @QueryParam("dir") @DefaultValue("asc") String dir,
                                     @Context UriInfo uri) {
+        permissions.require(module(), "READ");
         // Frontend use() gọi GET không tham số để lấy TOÀN BỘ danh sách (đổ dropdown) => không phân trang.
         // Danh mục lớn (nhà cung cấp, vật tư…) hãy dùng useQuery có phân trang; ở đây chặn tối đa 10.000 dòng.
         boolean paged = page != null || pageSize != null;
@@ -110,6 +114,7 @@ public abstract class MasterResource<T extends MasterEntity> {
 
     @GET @Path("/{id}")
     public T get(@PathParam("id") String id) {
+        permissions.require(module(), "READ");
         T e = em.find(type(), id);
         if (e == null) throw new NotFoundException();
         return e;
@@ -118,6 +123,7 @@ public abstract class MasterResource<T extends MasterEntity> {
     // ---------- POST ----------
     @POST @Transactional
     public Response create(Map<String, Object> body) {
+        permissions.require(module(), "CREATE");
         body.remove("id");
         T e = mapper.convertValue(body, type());
         validate(e);
@@ -128,9 +134,29 @@ public abstract class MasterResource<T extends MasterEntity> {
         return Response.status(Response.Status.CREATED).entity(e).build();
     }
 
+    @POST @Path("/import") @Transactional
+    public Response importRows(List<Map<String, Object>> body) {
+        permissions.require(module(), "IMPORT");
+        if (body == null || body.isEmpty()) throw bad("Danh sách import rỗng");
+        if (body.size() > 5_000) throw bad("Chỉ import tối đa 5000 dòng mỗi lần");
+        int imported = 0;
+        for (Map<String, Object> row : body) {
+            row.remove("id");
+            T e = mapper.convertValue(row, type());
+            validate(e);
+            if (blank(e.code) && codePrefix() != null) e.code = nextCode(codePrefix());
+            normalize(e);
+            em.persist(e);
+            flushOrConflict("Dữ liệu import không hợp lệ hoặc bị trùng mã");
+            imported++;
+        }
+        return Response.status(Response.Status.CREATED).entity(Map.of("imported", imported)).build();
+    }
+
     // ---------- PUT ----------
     @PUT @Path("/{id}") @Transactional
     public T update(@PathParam("id") String id, Map<String, Object> body) {
+        permissions.require(module(), "UPDATE");
         T e = em.find(type(), id);
         if (e == null) throw new NotFoundException();
         body.remove("id");
@@ -144,6 +170,7 @@ public abstract class MasterResource<T extends MasterEntity> {
     // ---------- DELETE ----------
     @DELETE @Path("/{id}") @Transactional
     public Response delete(@PathParam("id") String id) {
+        permissions.require(module(), "DELETE");
         T e = em.find(type(), id);
         if (e == null) throw new NotFoundException();
         em.remove(e);

@@ -1,5 +1,9 @@
 target
 node_modules/
+postgres_data/
+uploads/
+.deployment-package/
+deployment-package.tar.gz
 .env
 .env.local
 privateKey.pem

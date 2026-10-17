@@ -117,6 +117,7 @@ export const suppliersStore = makeStore('NCC', '/suppliers', [
   { id: 's99', code: 'NCC0099', name: 'NCC Bao Bì Á Châu', phone: '0274 378 2888', address: 'Bình Dương' },
   { id: 's100', code: 'NCC0100', name: 'NCC Bao Bì Đông Hải Bến Tre', phone: '0275 381 2222', address: 'Bến Tre' },
 ]);
+export const warehousesStore = makeStore('KHO', '/warehouses', []);
 export const customersStore = makeStore('KH', '/customers', [
   { id: 'c1', code: 'KH0001', name: 'Công ty TNHH ABC', phone: '090 1234 567', address: 'TP.HCM' },
   { id: 'c2', code: 'KH0002', name: 'Cửa hàng Minh Long', phone: '090 7654 321', address: 'Đà Nẵng' },
@@ -144,6 +145,42 @@ export const accountsStore = makeStore('TK', '/accounts', [
   { id: 'a2', code: '131', name: 'Phải thu khách hàng' },
   { id: 'a3', code: '331', name: 'Phải trả người bán' },
 ]);
+export const departmentsStore = makeStore('PB', '/departments', [
+  { id: 'd1', code: 'PB-KT', name: 'Phòng Kế toán', manager: 'Trần Thị Hoa', phone: '024 3852 1188' },
+  { id: 'd2', code: 'PB-KHO', name: 'Phòng Kho vận', manager: 'Nguyễn Văn Bình', phone: '024 3852 1199' },
+  { id: 'd3', code: 'PB-KD', name: 'Phòng Kinh doanh', manager: 'Lê Minh Châu', phone: '028 3822 3377' },
+  { id: 'd4', code: 'PB-NS', name: 'Phòng Nhân sự', manager: 'Phạm Thu Dung', phone: '024 3852 1177' },
+]);
+export const employeesStore = makeStore('NV', '/employees', [
+  { id: 'e1', code: 'NV0001', name: 'Nguyễn Văn An', phone: '090 123 4567', email: 'an.nguyen@ketoan.vn', position: 'Kế toán trưởng', departmentId: 'd1' },
+  { id: 'e2', code: 'NV0002', name: 'Trần Thị Bích', phone: '091 234 5678', email: 'bich.tran@ketoan.vn', position: 'Kế toán viên', departmentId: 'd1' },
+  { id: 'e3', code: 'NV0003', name: 'Lê Hoàng Cường', phone: '092 345 6789', email: 'cuong.le@ketoan.vn', position: 'Thủ kho', departmentId: 'd2' },
+  { id: 'e4', code: 'NV0004', name: 'Phạm Thu Dung', phone: '093 456 7890', email: 'dung.pham@ketoan.vn', position: 'Trưởng phòng Nhân sự', departmentId: 'd4' },
+  { id: 'e5', code: 'NV0005', name: 'Võ Minh Đức', phone: '094 567 8901', email: 'duc.vo@ketoan.vn', position: 'Nhân viên kinh doanh', departmentId: 'd3' },
+]);
+export const unitsStore = makeStore('DVT', '/units', [
+  { id: 'u1', code: 'DVT001', name: 'Cái' },
+  { id: 'u2', code: 'DVT002', name: 'Chiếc' },
+  { id: 'u3', code: 'DVT003', name: 'Bộ' },
+  { id: 'u4', code: 'DVT004', name: 'Hộp' },
+  { id: 'u5', code: 'DVT005', name: 'Thùng' },
+  { id: 'u6', code: 'DVT006', name: 'Kg' },
+  { id: 'u7', code: 'DVT007', name: 'Mét' },
+  { id: 'u8', code: 'DVT008', name: 'Lít' },
+]);
+export const partnersStore = makeStore('DT', '/partners', [
+  { id: 'pt1', code: 'DT0001', name: 'Công ty TNHH ABC', phone: '090 1234 567', address: 'TP. Hồ Chí Minh', kind: 'customer' },
+  { id: 'pt2', code: 'DT0002', name: 'Công ty CP Phong Vũ', phone: '028 7300 8888', address: 'TP. Hồ Chí Minh', kind: 'supplier' },
+  { id: 'pt3', code: 'DT0003', name: 'Nguyễn Văn Khách', phone: '090 1112 223', address: 'Hà Nội', kind: 'customer' },
+  { id: 'pt4', code: 'DT0004', name: 'Công ty Digiworld', phone: '028 3915 1919', address: 'TP. Hồ Chí Minh', kind: 'both' },
+]);
+export const openingBalancesStore = makeStore('DK', '/opening-balances', []);
+export const closingEntriesStore = makeStore('KC', '/closing-entries', [
+  { id: 'kc1', code: 'KC0001', name: 'Kết chuyển doanh thu', fromAccount: '511', toAccount: '911', description: 'Kết chuyển doanh thu bán hàng cuối kỳ' },
+  { id: 'kc2', code: 'KC0002', name: 'Kết chuyển giá vốn', fromAccount: '911', toAccount: '632', description: 'Kết chuyển giá vốn hàng bán cuối kỳ' },
+  { id: 'kc3', code: 'KC0003', name: 'Kết chuyển chi phí quản lý', fromAccount: '911', toAccount: '642', description: 'Kết chuyển chi phí quản lý doanh nghiệp' },
+  { id: 'kc4', code: 'KC0004', name: 'Kết chuyển lợi nhuận', fromAccount: '911', toAccount: '421', description: 'Kết chuyển lợi nhuận sau thuế' },
+]);
 
 // Chỉ dùng ở chế độ giả lập: sắp xếp / tìm theo "Tên loại vật tư" (sort=typeName).
 // API thật thì server tự join bảng loại vật tư.
@@ -151,14 +188,24 @@ if (materialsStore.resolve) {
   materialsStore.resolve.typeName = (it) => materialTypesStore.list.find((x) => x.id === it.typeId)?.name ?? '';
 }
 
-// Xóa cache của mọi danh mục: gọi khi đăng xuất / đổi tài khoản.
-export const resetAllStores = () => [
-  suppliersStore, customersStore, banksStore, materialTypesStore, materialsStore, accountsStore,
-].forEach((s) => s.reset());
+// Các store KHÁC (vd. store của plugin kho) đăng ký thêm hàm xoá cache — core KHÔNG import plugin
+// (giữ đúng hướng phụ thuộc plugin → core).
+const extraResetters = new Set();
+export const registerReset = (fn) => { if (typeof fn === 'function') extraResetters.add(fn); };
+
+// Xóa cache của mọi danh mục + các store đã đăng ký: gọi khi đăng xuất / đổi tài khoản.
+export const resetAllStores = () => {
+  [
+    suppliersStore, customersStore, warehousesStore, banksStore, materialTypesStore, materialsStore, accountsStore,
+    departmentsStore, employeesStore, unitsStore, partnersStore, closingEntriesStore, openingBalancesStore,
+  ].forEach((s) => s.reset());
+  extraResetters.forEach((fn) => fn());
+};
 
 // Tìm kiếm cho ô autocomplete. Giả lập: lọc trong bộ nhớ (có độ trễ). Thật: gọi server
 // GET /<resource>?q=...&page=1&pageSize=20. Kết quả trả về tối đa 20 dòng.
 export const searchSuppliers = (q) => suppliersStore.search(q).then((rows) => rows.map((s) => ({ id: s.id, name: s.name, hint: s.code })));
 export const searchCustomers = (q) => customersStore.search(q).then((rows) => rows.map((c) => ({ id: c.id, name: c.name, hint: c.code })));
 export const searchBanks = (q) => banksStore.search(q).then((rows) => rows.map((b) => ({ id: b.id, name: b.name, hint: b.code })));
+export const searchWarehouses = (q) => warehousesStore.search(q).then((rows) => rows.map((w) => ({ id: w.id, name: w.name, hint: w.code })));
 export const searchMaterials = (q) => materialsStore.search(q).then((rows) => rows.map((m) => ({ id: m.id, name: m.name, hint: `${vnd(m.price)}/${m.unit}`, price: m.price })));

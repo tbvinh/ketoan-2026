@@ -3,8 +3,8 @@ import { addMessages, useI18n } from './i18n.jsx';
 import { Loading } from './ui.jsx';
 
 addMessages({
-  vi: { 'search.placeholder': 'Tìm trong tất cả (nhấn Enter)', 'search.results': 'Kết quả cho', 'search.close': 'Đóng', 'search.none': 'Không có kết quả.' },
-  en: { 'search.placeholder': 'Search everything (press Enter)', 'search.results': 'Results for', 'search.close': 'Close', 'search.none': 'No results.' },
+  vi: { 'search.placeholder': 'Tìm trong tất cả (nhấn Enter)', 'search.results': 'Kết quả cho', 'search.close': 'Đóng', 'search.none': 'Không có kết quả.', 'search.clear': 'Xóa bộ lọc' },
+  en: { 'search.placeholder': 'Search everything (press Enter)', 'search.results': 'Results for', 'search.close': 'Close', 'search.none': 'No results.', 'search.clear': 'Clear filter' },
 });
 
 function Group({ plugin, query, onOpen }) {

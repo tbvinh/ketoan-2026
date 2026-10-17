@@ -1,32 +1,41 @@
 import { useSyncExternalStore } from 'react';
 
-// Ma trận quyền CRUD áp dụng cho vai trò "user". Vai trò "admin" luôn full quyền,
-// không lưu trong bảng này và không thể bị khóa.
-export const PLUGIN_IDS = [
-  //'mail', 'calendar', 'people', 'tasks', 
-  'inventory', 'catalog'];
-export const ACTIONS = ['read', 'create', 'update', 'delete'];
+// Ma trận quyền chi tiết áp dụng cho vai trò người dùng.
+// Nguồn dữ liệu thật là DB (bảng permissions + role_permissions) và được tải qua /api/auth/me.
+// Vai trò admin luôn full quyền, Shell.can() short-circuit trước khi đọc bảng này.
+export const PLUGIN_IDS = ['inventory', 'catalog', 'opening', 'cash', 'bank', 'general', 'reports'];
+export const ACTIONS = ['read', 'create', 'update', 'delete', 'import', 'export'];
 
-const DEFAULT = {
-  // mail:     { read: true, create: true, update: true,  delete: false },
-  // calendar: { read: true, create: true, update: true,  delete: false },
-  // people:   { read: true, create: true, update: false, delete: false },
-  // tasks:    { read: true, create: true, update: true,  delete: true },
-  inventory:{ read: true, create: true, update: true,  delete: false },
-  catalog:  { read: true, create: true, update: true,  delete: true },
+const KEY = 'perms_user';
+
+const normalize = (source) => {
+  const out = {};
+  PLUGIN_IDS.forEach((id) => {
+    out[id] = {};
+    ACTIONS.forEach((action) => { out[id][action] = !!source?.[id]?.[action]; });
+  });
+  return out;
 };
 
 function load() {
-  try { return { ...DEFAULT, ...JSON.parse(localStorage.getItem('perms_user') || '{}') }; }
-  catch { return DEFAULT; }
+  try { return normalize(JSON.parse(localStorage.getItem(KEY) || '{}')); }
+  catch { return normalize({}); }
 }
+
 let perms = load();
 const subs = new Set();
+const emit = () => subs.forEach((fn) => fn());
 
-export function togglePerm(pluginId, action) {
-  perms = { ...perms, [pluginId]: { ...perms[pluginId], [action]: !perms[pluginId][action] } };
-  localStorage.setItem('perms_user', JSON.stringify(perms));
-  subs.forEach((f) => f());
+export function setPermissions(source) {
+  perms = normalize(source);
+  localStorage.setItem(KEY, JSON.stringify(perms));
+  emit();
+}
+
+export function clearPermissions() {
+  perms = normalize({});
+  localStorage.removeItem(KEY);
+  emit();
 }
 
 export const usePermissions = () =>

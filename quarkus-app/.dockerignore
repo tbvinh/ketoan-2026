@@ -1,0 +1,14 @@
+target
+.git
+.gitignore
+.idea
+.vscode
+.env
+.env.local
+!src/main/webui/.env.local
+cookies.txt
+node_modules
+src/main/webui/dist
+postgres_data
+.deployment-package
+deployment-package.tar.gz

@@ -2,10 +2,14 @@ package com.ketoan.service;
 
 import com.ketoan.dto.AuthRequest;
 import com.ketoan.dto.AuthResponse;
+import com.ketoan.entity.Role;
 import com.ketoan.entity.User;
+import com.ketoan.entity.UserRole;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.smallrye.jwt.build.Jwt;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
@@ -19,13 +23,20 @@ public class AuthService {
     public static final String ISSUER = "https://vinhcancode.local";   // phải trùng mp.jwt.verify.issuer
     public static final long TOKEN_TTL_SECONDS = 86400;           // 1 ngày, bằng maxAge của cookie
 
+    @Inject
+    EntityManager em;
+
+    @Inject
+    PermissionService permissionService;
+
     @Transactional
     public AuthResponse login(AuthRequest request) {
         // 1. Tìm user trong DB
         User user = User.findByUsername(request.username);
 
         // 2. Kiểm tra tồn tại và so sánh mật khẩu mã hóa BCrypt
-        if (user == null || !BcryptUtil.matches(request.password, user.password)) {
+        if (user == null || Boolean.FALSE.equals(user.active)
+                || !BcryptUtil.matches(request.password, user.password)) {
             throw new WebApplicationException(
                     Response.status(Response.Status.UNAUTHORIZED)
                             .entity("{\"error\": \"Tên đăng nhập hoặc mật khẩu không đúng!\"}")
@@ -51,7 +62,8 @@ public class AuthService {
         User user = User.findByUsername(request.username);
 
         // 2. Kiểm tra tài khoản và xác thực mật khẩu băm BCrypt
-        if (user == null || !BcryptUtil.matches(request.password, user.password)) {
+        if (user == null || Boolean.FALSE.equals(user.active)
+                || !BcryptUtil.matches(request.password, user.password)) {
             throw new WebApplicationException(
                     Response.status(Response.Status.UNAUTHORIZED)
                             .entity("{\"error\": \"Tên đăng nhập hoặc mật khẩu không đúng!\"}")
@@ -60,12 +72,12 @@ public class AuthService {
             );
         }
 
-        // 3. Tạo JWT đã ký. Không cần lưu token vào DB nữa (stateless) => có thể bỏ cột users.token
+        // 3. Tạo JWT đã ký. Nhóm quyền lấy từ bảng user_roles (admin luôn có nhóm "admin")
         return Jwt.issuer(ISSUER)
                 .subject(user.username)
                 .upn(user.username) // jwt.getName() sẽ trả về giá trị này
-                .groups(Set.of(normalizeRole(user.role))) // "admin" | "user" => dùng cho @RolesAllowed
-                .claim("name", user.username != null ? user.username : user.username)
+                .groups(new java.util.HashSet<>(permissionService.groupRoles(user.username, user.role)))
+                .claim("name", user.fullName != null && !user.fullName.isBlank() ? user.fullName : user.username)
                 .expiresIn(TOKEN_TTL_SECONDS)
                 .sign();                                                 // ký bằng smallrye.jwt.sign.key.location
     }
@@ -84,9 +96,18 @@ public class AuthService {
         User user = new User();
         user.username = request.username;
         user.password = BcryptUtil.bcryptHash(request.password);
-        user.role = "USER";
+        user.role = "user";
+        user.active = true;
 
         user.persist(); // Lưu vào DB
+        em.flush();
+        Role userRole = Role.findByCode("user");
+        if (userRole != null) {
+            UserRole link = new UserRole();
+            link.userId = user.id;
+            link.roleId = userRole.id;
+            link.persist();
+        }
         return user;
     }
 

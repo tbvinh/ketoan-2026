@@ -16,7 +16,8 @@ const strip = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g
 const has = (v) => v !== undefined && v !== null && v !== '';
 
 // Các cột chữ mà ô tìm kiếm q quét qua (server thật tự quyết định danh sách này)
-const SEARCH_FIELDS = ['code', 'name', 'phone', 'address', 'unit', 'branch'];
+const SEARCH_FIELDS = ['code', 'name', 'phone', 'address', 'unit', 'branch',
+  'email', 'position', 'manager', 'description', 'fromAccount', 'toAccount'];
 
 // Mô phỏng đúng hợp đồng của server: q, filters, sort, page/pageSize -> { items, total }
 //   resolve: hàm tính các trường "ảo" cần join bảng khác, ví dụ resolve.typeName(it)
@@ -39,6 +40,8 @@ function queryLocal(items, { q, page = 1, pageSize = 20, sort, filters = {} } = 
   if (f.phone === 'none') rows = rows.filter((it) => !String(it.phone ?? '').trim());
   if (has(f.branch)) rows = rows.filter((it) => strip(it.branch).includes(strip(f.branch)));
   if (has(f.group)) rows = rows.filter((it) => String(it.code ?? '').charAt(0) === String(f.group));
+  if (has(f.departmentId)) rows = rows.filter((it) => String(it.departmentId) === String(f.departmentId));
+  if (has(f.kind)) rows = rows.filter((it) => String(it.kind) === String(f.kind));
 
   if (sort?.key) {
     const val = (it) => {

@@ -4,6 +4,7 @@ import com.ketoan.dto.AuthRequest;
 import com.ketoan.dto.AuthResponse;
 import com.ketoan.entity.User;
 import com.ketoan.service.AuthService;
+import com.ketoan.service.PermissionService;
 import jakarta.annotation.security.RolesAllowed;
 
 import jakarta.inject.Inject;
@@ -11,6 +12,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.NewCookie;
 import jakarta.ws.rs.core.Response;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import org.eclipse.microprofile.jwt.JsonWebToken;
@@ -25,6 +27,9 @@ public class AuthResource {
 
     @Inject
     AuthService authService;
+
+    @Inject
+    PermissionService permissionService;
 
     @POST
     @Path("/register")
@@ -73,15 +78,19 @@ public class AuthResource {
     @RolesAllowed({"admin", "user"})
     public Response me() {
         String username = jwt.getName();                       // lấy từ upn
-        String name = jwt.getClaim("name");
         Set<String> groups = jwt.getGroups();
-        String role = groups.contains("admin") ? "admin" : "user";
+        String role = groups != null && groups.contains("admin") ? "admin" : "user";
+        User user = User.findByUsername(username);
+        String name = user != null && user.fullName != null && !user.fullName.isBlank()
+                ? user.fullName
+                : jwt.getClaim("name");
 
-        return Response.ok(Map.of(
-                "username", username,
-                "name", name != null ? name : username,
-                "role", role
-        )).build();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("username", username);
+        body.put("name", name != null && !name.isBlank() ? name : username);
+        body.put("role", role);
+        body.put("permissions", permissionService.effective(username, "admin".equals(role)));
+        return Response.ok(body).build();
     }
 
     @POST

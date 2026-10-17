@@ -1,47 +1,102 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { fakeApi } from '../../core/api.js';
 import { useI18n } from '../../core/i18n.jsx';
 import { Loading } from '../../core/ui.jsx';
 import Denied from '../../core/Denied.jsx';
 import Autocomplete from '../../core/Autocomplete.jsx';
 import { useConfirm } from '../../core/confirm.jsx';
+import { inventoryApi } from '../../api/inventoryApi.js';   // FE-ST8: một nguồn API cho domain kho
+import { printVoucher } from './voucher.js';
+import { ArrowDownToLine, ArrowRightLeft, BarChart3, BookOpen, FileText, Receipt, Truck } from '../../core/icons.jsx';
+import { useDebounced } from '../../core/useDebounced.js';
+import { useAsyncQuery } from '../../core/useasyncquery.js';
 
-import { suppliersStore, customersStore, banksStore, materialsStore, searchSuppliers, searchCustomers, searchBanks, searchMaterials, vnd } from '../../core/masterdata.js';
+import { suppliersStore, customersStore, warehousesStore, banksStore, materialsStore, searchSuppliers, searchCustomers, searchWarehouses, searchBanks, searchMaterials, vnd, registerReset } from '../../core/masterdata.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
+const firstOfMonth = () => today().slice(0, 8) + '01';
+const PREFIX = { import: 'PN', export: 'PX', return: 'PT', transfer: 'PC' };
+const lineTotal = (lines) => (lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.price) || 0), 0);
+const blankDoc = (type) => ({ type, partner: null, bank: null, warehouseIn: null, warehouseOut: null, date: today(), note: '', lines: [] });
 
-const SEED_DOCS = [
-  { id: 1, no: 'PN0001', type: 'import', partner: { id: 's1', name: 'NCC Phong Vũ' }, date: '2026-09-20', note: '', lines: [
-    { id: 1, product: { id: 'p1', name: 'Bàn phím cơ' }, qty: 20, price: 700000 },
-    { id: 2, product: { id: 'p2', name: 'Chuột không dây' }, qty: 30, price: 220000 } ] },
-  { id: 2, no: 'PX0001', type: 'export', partner: { id: 'c1', name: 'Công ty TNHH ABC' }, date: '2026-09-22', note: 'Giao tận nơi', lines: [
-    { id: 1, product: { id: 'p3', name: 'Màn hình 24"' }, qty: 5, price: 3400000 } ] },
-  { id: 3, no: 'PT0001', type: 'return', partner: { id: 'c2', name: 'Cửa hàng Minh Long' }, date: '2026-09-23', note: 'Hàng lỗi', lines: [
-    { id: 1, product: { id: 'p5', name: 'RAM 16GB' }, qty: 2, price: 900000 } ] },
-];
-const PREFIX = { import: 'PN', export: 'PX', return: 'PT' };
-const lineTotal = (lines) => lines.reduce((s, l) => s + l.qty * l.price, 0);
-const blankDoc = (type) => ({ type, partner: null, bank: null, date: today(), note: '', lines: [] });
-
-// ---------- Store dùng chung ----------
-let st = { docs: [], loading: false };
+// ---------- Store dùng API Thật ----------
+// Truy vấn hiện tại được giữ lại để nút ⟳ / sau khi ghi có thể tải lại đúng trang đang xem.
+let lastQuery = {};
+let st = { docs: [], total: 0, loading: false, error: null };
 const subs = new Set();
 const set = (p) => { st = { ...st, ...p }; subs.forEach((f) => f()); };
 const useDocs = () => useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => st);
-function load() { set({ loading: true }); fakeApi(SEED_DOCS, 600).then((docs) => set({ docs, loading: false })); }
+
 let idSeq = Date.now();
-const nextId = () => ++idSeq;   // Date.now() có thể trùng khi import nhiều phiếu trong cùng 1 ms
-function saveDoc(doc) {
-  if (doc.id) { set({ docs: st.docs.map((d) => (d.id === doc.id ? doc : d)) }); return; }
-  const count = st.docs.filter((d) => d.type === doc.type).length + 1;
-  const no = PREFIX[doc.type] + String(count).padStart(4, '0');
-  set({ docs: [{ ...doc, id: nextId(), no }, ...st.docs] });
+const nextId = () => ++idSeq;
+
+// Tải danh sách theo điều kiện tìm kiếm/lọc/sắp xếp/phân trang (không truyền ⇒ dùng lại truy vấn gần nhất).
+// Server trả { items, total } — items đã được cắt theo trang nên FE không lọc/phân trang lại.
+async function load(params) {
+  if (params !== undefined) lastQuery = params;
+  set({ loading: true, error: null });
+  try {
+    const res = await inventoryApi.list(lastQuery);
+    const docs = Array.isArray(res) ? res : (res?.items ?? []);
+    set({ docs, total: Array.isArray(res) ? docs.length : (res?.total ?? docs.length), loading: false });
+  } catch (err) {
+    set({ loading: false, error: err?.message ?? String(err) });
+  }
 }
-function removeDoc(id) { set({ docs: st.docs.filter((d) => d.id !== id) }); }
-function removeDocs(ids) { const gone = new Set(ids); set({ docs: st.docs.filter((d) => !gone.has(d.id)) }); }
-const search = (q) => fakeApi(
-  st.docs.filter((d) => (d.no + ' ' + (d.partner?.name ?? '')).toLowerCase().includes(q.toLowerCase()))
-    .map((d) => ({ id: d.id, title: d.no, subtitle: d.partner?.name ?? d.type, state: { mode: 'form', editing: d } })), 500);
+
+// Xoá cache khi đăng xuất / đổi tài khoản (FE-ST6) — auth.jsx gọi gián tiếp qua resetAllStores()
+function resetDocs() {
+  lastQuery = {};
+  set({ docs: [], total: 0, loading: false, error: null });
+}
+registerReset(resetDocs);
+
+async function saveDoc(doc, asImport = false) {
+  const payload = {
+    ...doc,
+    bank: (doc.bank && doc.bank.id) ? { id: doc.bank.id, name: doc.bank.name } : null,
+    warehouseIn: (doc.type === 'import' || doc.type === 'return' || doc.type === 'transfer') && doc.warehouseIn?.id
+      ? { id: doc.warehouseIn.id, name: doc.warehouseIn.name } : null,
+    warehouseOut: (doc.type === 'export' || doc.type === 'transfer') && doc.warehouseOut?.id
+      ? { id: doc.warehouseOut.id, name: doc.warehouseOut.name } : null,
+    partner: (doc.partner && doc.partner.id) ? { id: doc.partner.id, name: doc.partner.name } : null,
+    lines: (doc.lines || []).map((l) => ({
+      ...l,
+      id: typeof l.id === 'number' && l.id < 100000000 ? l.id : null,
+      product: l.product ? { id: l.product.id, name: l.product.name } : null,
+      qty: Number(l.qty) || 0,
+      price: Number(l.price) || 0,
+    })),
+  };
+
+  const saved = payload.id
+    ? (await inventoryApi.update(payload.id, payload)) ?? payload
+    : asImport ? await inventoryApi.importDocs([payload]) : await inventoryApi.create(payload);
+  await load();                       // total/trang do server quyết định ⇒ luôn tải lại sau khi ghi (FE-ST5)
+  return saved;
+}
+
+async function removeDoc(id) {
+  await inventoryApi.delete(id);
+  await load();
+}
+
+async function removeDocs(ids) {
+  await inventoryApi.bulkDelete(ids);
+  await load();
+}
+
+// Global Search: gọi server (không phụ thuộc trang đang xem). Lỗi ⇒ trả [] để không làm vỡ khung tìm kiếm chung.
+const search = async (q) => {
+  const needle = (q ?? '').trim();
+  if (!needle) return [];
+  try {
+    const res = await inventoryApi.list({ q: needle, page: 1, pageSize: 20 });
+    const rows = Array.isArray(res) ? res : (res?.items ?? []);
+    return rows.map((d) => ({ id: d.id, title: d.no, subtitle: d.partner?.name ?? d.type, state: { mode: 'form', editing: d } }));
+  } catch {
+    return [];
+  }
+};
 
 const messages = {
   vi: { 'inv.importFile': 'Import', 'inv.importTitle': 'Import phiếu từ file CSV', 'inv.importTemplate': 'Tải file mẫu', 'inv.close': 'Đóng',
@@ -51,22 +106,50 @@ const messages = {
     'inv.errLine': 'Dòng {line}: {msg}', 'inv.errType': 'Loại phiếu không hợp lệ (import/export/return)', 'inv.errPartner': 'Thiếu đối tác',
     'inv.errDate': 'Ngày không hợp lệ (YYYY-MM-DD hoặc DD/MM/YYYY)', 'inv.errProduct': 'Thiếu sản phẩm', 'inv.errQty': 'Số lượng phải lớn hơn 0',
     'inv.errPrice': 'Đơn giá không hợp lệ', 'inv.errNotFound': 'Không tìm thấy "{name}" trong Danh mục',
-    'inv.selectAll': 'Chọn tất cả trên trang', 'inv.selectRow': 'Chọn phiếu', 'inv.selected': 'Đã chọn {n} phiếu', 'inv.selectAllResults': 'Chọn tất cả {n} phiếu',
+    'inv.selectAll': 'Chọn tất cả trên trang', 'inv.selectRow': 'Chọn phiếu', 'inv.selected': 'Đã chọn {n} phiếu',
     'inv.clearSel': 'Bỏ chọn', 'inv.deleteSelected': 'Xóa đã chọn', 'inv.confirmBulkDelete': 'Bạn có chắc muốn xóa {n} phiếu đã chọn? Thao tác này không thể hoàn tác.',
-    'inv.title': 'Nhập xuất kho', 'inv.filters': 'Loại phiếu', 'inv.all': 'Tất cả', 'inv.import': 'Nhập kho', 'inv.export': 'Xuất kho', 'inv.return': 'Trả hàng',
+    'inv.title': 'Nhập xuất kho', 'inv.filters': 'Loại phiếu', 'inv.all': 'Tất cả', 'inv.import': 'Nhập kho', 'inv.export': 'Xuất kho', 'inv.return': 'Trả hàng', 'inv.transfer': 'Điều chuyển',
     'inv.no': 'Số phiếu', 'inv.type': 'Loại phiếu', 'inv.partner': 'Đối tác', 'inv.supplier': 'Nhà cung cấp', 'inv.customer': 'Khách hàng',
     'inv.date': 'Ngày', 'inv.note': 'Ghi chú', 'inv.lines': 'Chi tiết hàng hóa', 'inv.product': 'Sản phẩm', 'inv.qty': 'Số lượng', 'inv.price': 'Đơn giá',
     'inv.lineTotal': 'Thành tiền', 'inv.grandTotal': 'Tổng cộng', 'inv.addLine': 'Thêm dòng', 'inv.save': 'Lưu phiếu', 'inv.delete': 'Xóa phiếu',
     'inv.back': 'Danh sách', 'inv.empty': 'Chưa có phiếu nào.', 'inv.validate': 'Vui lòng chọn đối tác và thêm ít nhất 1 dòng hàng (mỗi dòng phải chọn sản phẩm, số lượng > 0).',
+    'inv.validateWarehouse': 'Phiếu điều chuyển phải chọn đủ kho nhập và kho xuất.',
     'inv.bank': 'Ngân hàng thanh toán', 'inv.searchBank': 'Gõ để tìm ngân hàng…', 'inv.newSupplier': 'nhà cung cấp', 'inv.newCustomer': 'khách hàng', 'inv.newMaterial': 'vật tư', 'inv.newBank': 'ngân hàng',
-    'inv.searchPartner': 'Gõ để tìm…', 'inv.searchProduct': 'Gõ để tìm sản phẩm…', 'inv.newImport': 'Phiếu nhập mới', 'inv.newExport': 'Phiếu xuất mới', 'inv.newReturn': 'Phiếu trả mới', 'inv.newGroup': 'Tạo phiếu',
+    'inv.warehouseIn': 'Kho nhập', 'inv.warehouseOut': 'Kho xuất', 'inv.searchWarehouse': 'Gõ để tìm kho…', 'inv.newWarehouse': 'kho',
+    'inv.searchPartner': 'Gõ để tìm…', 'inv.searchProduct': 'Gõ để tìm sản phẩm…', 'inv.newImport': 'Phiếu nhập mới', 'inv.newExport': 'Phiếu xuất mới', 'inv.newReturn': 'Phiếu trả mới', 'inv.newTransfer': 'Phiếu điều chuyển', 'inv.newGroup': 'Tạo phiếu',
     'inv.search': 'Tìm theo số phiếu, đối tác, ghi chú…', 'inv.clear': 'Xóa bộ lọc', 'inv.noResult': 'Không có kết quả phù hợp.',
     'inv.range': 'Hiển thị {from}–{to} / {total}', 'inv.dateFrom': 'Từ ngày', 'inv.dateTo': 'Đến ngày',
     'inv.perPage': 'Dòng/trang', 'inv.pageOf': 'Trang {p} / {n}', 'inv.first': 'Trang đầu', 'inv.prev': 'Trang trước', 'inv.next': 'Trang sau', 'inv.last': 'Trang cuối',
     'inv.confirmDeleteLine': 'Bạn có chắc muốn xóa dòng "{name}"?',
     'inv.master': 'Thông tin chung', 'inv.collapse': 'Thu gọn', 'inv.expand': 'Mở rộng',
     'inv.moveUp': 'Chuyển lên', 'inv.moveDown': 'Chuyển xuống', 'inv.drag': 'Kéo để đổi thứ tự',
-    'inv.edit': 'Sửa', 'inv.deleteRow': 'Xóa', 'inv.confirmDelete': 'Bạn có chắc muốn xóa phiếu "{name}"? Thao tác này không thể hoàn tác.' },
+    'inv.edit': 'Sửa', 'inv.deleteRow': 'Xóa', 'inv.confirmDelete': 'Bạn có chắc muốn xóa phiếu "{name}"? Thao tác này không thể hoàn tác.',
+    'inv.loadFailed': 'Không tải được danh sách phiếu', 'inv.saveFailed': 'Lưu phiếu thất bại', 'inv.deleteFailed': 'Không xóa được phiếu',
+    'inv.menuImport': 'Các phiếu nhập', 'inv.menuExport': 'Các phiếu xuất', 'inv.menuTransfer': 'Phiếu điều chuyển kho',
+    'inv.print': 'In phiếu', 'inv.exportExcel': 'Xuất Excel', 'inv.exportFailed': 'Không xuất được Excel',
+    'inv.stt': 'STT',
+    'inv.voucherImport': 'PHIẾU NHẬP KHO', 'inv.voucherExport': 'PHIẾU XUẤT KHO',
+    'inv.voucherTransfer': 'PHIẾU ĐIỀU CHUYỂN KHO', 'inv.voucherReturn': 'PHIẾU TRẢ HÀNG',
+    'inv.voucherCompany': 'CÔNG TY KẾ TOÁN', 'inv.voucherAddress': 'Địa chỉ: ...................................',
+    'inv.voucherPhone': 'Điện thoại: ...............................',
+    'inv.voucherAddressLabel': 'Địa chỉ', 'inv.voucherTax': 'Mã số thuế', 'inv.voucherPhoneLabel': 'Điện thoại',
+    'inv.voucherForm': 'Mẫu số {no}', 'inv.voucherFormRef': '(Ban hành theo TT 200/2014/TT-BTC)',
+    'inv.voucherDate': 'Ngày {d} tháng {m} năm {y}',
+    'inv.voucherDeliverer': 'Người giao', 'inv.voucherReceiver': 'Người nhận',
+    'inv.createdBy': 'Người lập phiếu', 'inv.deliverer': 'Người giao hàng', 'inv.receiver': 'Người nhận hàng',
+    'inv.keeper': 'Thủ kho', 'inv.chiefAccountant': 'Kế toán trưởng', 'inv.signHint': '(Ký, họ tên)',
+    'inv.materialLedger': 'Sổ chi tiết vật liệu, sản phẩm, hàng hóa',
+    'inv.stockSummary': 'Bảng tổng hợp NXT vật liệu, sản phẩm, hàng hóa',
+    'inv.salesLedger': 'Sổ chi tiết bán hàng', 'inv.salesCogs': 'Sổ chi tiết bán hàng và giá vốn',
+    'inv.selectMaterial': 'Chọn vật tư, sản phẩm, hàng hóa…', 'inv.materialRequired': 'Chọn một vật tư để xem sổ chi tiết.',
+    'inv.materialCode': 'Mã hàng', 'inv.materialName': 'Tên hàng', 'inv.unit': 'ĐVT',
+    'inv.openingQty': 'Tồn đầu (SL)', 'inv.openingValue': 'Tồn đầu (GT)',
+    'inv.inQty': 'Nhập (SL)', 'inv.inValue': 'Nhập (GT)', 'inv.outQty': 'Xuất (SL)', 'inv.outValue': 'Xuất (GT)',
+    'inv.closingQty': 'Tồn cuối (SL)', 'inv.closingValue': 'Tồn cuối (GT)',
+    'inv.balanceQty': 'Tồn sau (SL)', 'inv.balanceValue': 'Tồn sau (GT)',
+    'inv.revenue': 'Doanh thu', 'inv.cost': 'Giá vốn', 'inv.profit': 'Lãi gộp',
+    'inv.reportEmpty': 'Không có dữ liệu trong khoảng ngày đã chọn.',
+    'inv.reportSearch': 'Tìm theo mã hoặc tên hàng…' },
   en: { 'inv.importFile': 'Import', 'inv.importTitle': 'Import documents from CSV', 'inv.importTemplate': 'Download template', 'inv.close': 'Close',
     'inv.importHint': 'CSV file (UTF-8, separated by , or ;). Each row is one line item; rows sharing the same "ref" belong to one document. Required columns: type (import/export/return), partner, product, qty. Missing partners/products/banks are created in Master Data if you have permission.',
     'inv.importBusy': 'Importing…', 'inv.importDone': 'Imported {n} documents.', 'inv.importErrors': '{n} errors (failed documents were skipped):',
@@ -74,25 +157,53 @@ const messages = {
     'inv.errLine': 'Row {line}: {msg}', 'inv.errType': 'Invalid type (import/export/return)', 'inv.errPartner': 'Partner is missing',
     'inv.errDate': 'Invalid date (YYYY-MM-DD or DD/MM/YYYY)', 'inv.errProduct': 'Product is missing', 'inv.errQty': 'Qty must be greater than 0',
     'inv.errPrice': 'Invalid unit price', 'inv.errNotFound': '"{name}" was not found in Master Data',
-    'inv.selectAll': 'Select all on this page', 'inv.selectRow': 'Select document', 'inv.selected': '{n} selected', 'inv.selectAllResults': 'Select all {n} documents',
+    'inv.selectAll': 'Select all on this page', 'inv.selectRow': 'Select document', 'inv.selected': '{n} selected',
     'inv.clearSel': 'Clear selection', 'inv.deleteSelected': 'Delete selected', 'inv.confirmBulkDelete': 'Are you sure you want to delete {n} selected documents? This cannot be undone.',
-    'inv.title': 'Inventory', 'inv.filters': 'Type', 'inv.all': 'All', 'inv.import': 'Stock in', 'inv.export': 'Stock out', 'inv.return': 'Return',
+    'inv.title': 'Inventory', 'inv.filters': 'Type', 'inv.all': 'All', 'inv.import': 'Stock in', 'inv.export': 'Stock out', 'inv.return': 'Return', 'inv.transfer': 'Transfer',
     'inv.no': 'No.', 'inv.type': 'Type', 'inv.partner': 'Partner', 'inv.supplier': 'Supplier', 'inv.customer': 'Customer',
     'inv.date': 'Date', 'inv.note': 'Note', 'inv.lines': 'Line items', 'inv.product': 'Product', 'inv.qty': 'Qty', 'inv.price': 'Unit price',
     'inv.lineTotal': 'Line total', 'inv.grandTotal': 'Grand total', 'inv.addLine': 'Add line', 'inv.save': 'Save', 'inv.delete': 'Delete document',
     'inv.back': 'Document list', 'inv.empty': 'No documents yet.', 'inv.validate': 'Please choose a partner and add at least one line (each line needs a product and qty > 0).',
+    'inv.validateWarehouse': 'Transfer documents require both stock-in and stock-out warehouses.',
     'inv.bank': 'Payment bank', 'inv.searchBank': 'Type to search banks…', 'inv.newSupplier': 'supplier', 'inv.newCustomer': 'customer', 'inv.newMaterial': 'material', 'inv.newBank': 'bank',
-    'inv.searchPartner': 'Type to search…', 'inv.searchProduct': 'Type to search products…', 'inv.newImport': 'New stock-in', 'inv.newExport': 'New stock-out', 'inv.newReturn': 'New return', 'inv.newGroup': 'New document',
+    'inv.warehouseIn': 'Stock-in warehouse', 'inv.warehouseOut': 'Stock-out warehouse', 'inv.searchWarehouse': 'Type to search warehouses…', 'inv.newWarehouse': 'warehouse',
+    'inv.searchPartner': 'Type to search…', 'inv.searchProduct': 'Type to search products…', 'inv.newImport': 'New stock-in', 'inv.newExport': 'New stock-out', 'inv.newReturn': 'New return', 'inv.newTransfer': 'New transfer', 'inv.newGroup': 'New document',
     'inv.search': 'Search by number, partner, note…', 'inv.clear': 'Clear filters', 'inv.noResult': 'No matching results.',
     'inv.range': 'Showing {from}–{to} of {total}', 'inv.dateFrom': 'From date', 'inv.dateTo': 'To date',
     'inv.perPage': 'Rows/page', 'inv.pageOf': 'Page {p} / {n}', 'inv.first': 'First page', 'inv.prev': 'Previous page', 'inv.next': 'Next page', 'inv.last': 'Last page',
     'inv.confirmDeleteLine': 'Are you sure you want to delete line "{name}"?',
     'inv.master': 'General info', 'inv.collapse': 'Collapse', 'inv.expand': 'Expand',
     'inv.moveUp': 'Move up', 'inv.moveDown': 'Move down', 'inv.drag': 'Drag to reorder',
-    'inv.edit': 'Edit', 'inv.deleteRow': 'Delete', 'inv.confirmDelete': 'Are you sure you want to delete document "{name}"? This cannot be undone.' },
+    'inv.edit': 'Edit', 'inv.deleteRow': 'Delete', 'inv.confirmDelete': 'Are you sure you want to delete document "{name}"? This cannot be undone.',
+    'inv.loadFailed': 'Could not load documents', 'inv.saveFailed': 'Could not save the document', 'inv.deleteFailed': 'Could not delete the document',
+    'inv.menuImport': 'Import vouchers', 'inv.menuExport': 'Export vouchers', 'inv.menuTransfer': 'Transfer vouchers',
+    'inv.print': 'Print', 'inv.exportExcel': 'Export Excel', 'inv.exportFailed': 'Could not export Excel',
+    'inv.stt': 'No.',
+    'inv.voucherImport': 'STOCK-IN VOUCHER', 'inv.voucherExport': 'STOCK-OUT VOUCHER',
+    'inv.voucherTransfer': 'STOCK TRANSFER VOUCHER', 'inv.voucherReturn': 'GOODS RETURN VOUCHER',
+    'inv.voucherCompany': 'ACCOUNTING COMPANY', 'inv.voucherAddress': 'Address: ...................................',
+    'inv.voucherPhone': 'Phone: .....................................',
+    'inv.voucherAddressLabel': 'Address', 'inv.voucherTax': 'Tax code', 'inv.voucherPhoneLabel': 'Phone',
+    'inv.voucherForm': 'Form No. {no}', 'inv.voucherFormRef': '(Issued under Circular 200/2014/TT-BTC)',
+    'inv.voucherDate': 'Date {m}/{d}/{y}',
+    'inv.voucherDeliverer': 'Deliverer', 'inv.voucherReceiver': 'Receiver',
+    'inv.createdBy': 'Prepared by', 'inv.deliverer': 'Deliverer', 'inv.receiver': 'Receiver',
+    'inv.keeper': 'Storekeeper', 'inv.chiefAccountant': 'Chief accountant', 'inv.signHint': '(Signature, full name)',
+    'inv.materialLedger': 'Materials & goods ledger',
+    'inv.stockSummary': 'Inventory summary (NXT)',
+    'inv.salesLedger': 'Sales detail ledger', 'inv.salesCogs': 'Sales & COGS ledger',
+    'inv.selectMaterial': 'Choose a material/product…', 'inv.materialRequired': 'Choose a material to view its ledger.',
+    'inv.materialCode': 'Item code', 'inv.materialName': 'Item name', 'inv.unit': 'Unit',
+    'inv.openingQty': 'Opening qty', 'inv.openingValue': 'Opening value',
+    'inv.inQty': 'In qty', 'inv.inValue': 'In value', 'inv.outQty': 'Out qty', 'inv.outValue': 'Out value',
+    'inv.closingQty': 'Closing qty', 'inv.closingValue': 'Closing value',
+    'inv.balanceQty': 'Balance qty', 'inv.balanceValue': 'Balance value',
+    'inv.revenue': 'Revenue', 'inv.cost': 'COGS', 'inv.profit': 'Gross profit',
+    'inv.reportEmpty': 'No data in the selected range.',
+    'inv.reportSearch': 'Search by item code or name…' },
 };
 
-/* ---------- Tìm kiếm / lọc / sắp xếp / phân trang (xử lý phía client) ---------- */
+/* ---------- Tìm kiếm / lọc / sắp xếp / phân trang: SERVER (xem InvDocResource.list) ---------- */
 
 const NO_FILTERS = {};
 const EMPTY_VIEW = { q: '', filters: NO_FILTERS, sort: null, page: 1 };
@@ -103,34 +214,20 @@ const filterDefs = (t) => [
   { key: 'dateTo', label: t('inv.dateTo') },
 ];
 
-// Giá trị dùng để sắp xếp theo từng cột
-const SORT_GET = {
-  no: (d) => d.no,
-  type: (d) => d.type,
-  partner: (d) => d.partner?.name ?? '',
-  date: (d) => d.date,
-  total: (d) => lineTotal(d.lines),
+// Điều kiện lọc/sắp xếp gửi lên server (whitelist sortable phía server: no, type, partner, date)
+const buildQuery = (state) => {
+  const filters = state.filters ?? NO_FILTERS;
+  return {
+    q: state.q ?? '',
+    type: state.filterType && state.filterType !== 'all' ? state.filterType : '',
+    dateFrom: filters.dateFrom ?? '',
+    dateTo: filters.dateTo ?? '',
+    page: state.page ?? 1,
+    pageSize: state.pageSize ?? PAGE_SIZES[1],
+    sort: state.sort?.key ?? '',
+    dir: state.sort?.dir ?? 'asc',
+  };
 };
-
-function applyView(docs, { filterType, q, filters, sort }) {
-  const needle = (q ?? '').trim().toLowerCase();
-  let list = docs.filter((d) => {
-    if (filterType !== 'all' && d.type !== filterType) return false;
-    if (needle && !(d.no + ' ' + (d.partner?.name ?? '') + ' ' + (d.note ?? '')).toLowerCase().includes(needle)) return false;
-    if (filters.dateFrom && d.date < filters.dateFrom) return false;
-    if (filters.dateTo && d.date > filters.dateTo) return false;
-    return true;
-  });
-  if (sort) {
-    const get = SORT_GET[sort.key];
-    const dir = sort.dir === 'asc' ? 1 : -1;
-    list = [...list].sort((a, b) => {
-      const x = get(a), y = get(b);
-      return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
-    });
-  }
-  return list;
-}
 
 /* ---------- CSS riêng của plugin (có thể chuyển sang file style chung) ---------- */
 
@@ -154,20 +251,53 @@ const CSS = `
 .importacts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .importres { margin-top: 10px; font-size: 13px; }
 .importerr { margin: 6px 0 0; padding-left: 18px; color: #b42318; max-height: 160px; overflow: auto; }
+.reportsum { display: flex; flex-wrap: wrap; gap: 18px; margin: 10px 0; font-size: 13px; }
+.reportsum b { font-size: 15px; }
+.repnote { margin: 8px 0; color: var(--muted, #667085); font-size: 13px; }
+.repac { min-width: 320px; }
+.side .item svg { flex: none; }
+.mico { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 6px; flex: none; }
+.mi-import { color: #1d4ed8; background: #e6edff; }
+.mi-export { color: #b3360a; background: #ffeadf; }
+.mi-transfer { color: #7c3aed; background: #f0e9ff; }
+.mi-ledger { color: #0f766e; background: #ddf5f1; }
+.mi-summary { color: #be123c; background: #ffe4ea; }
+.mi-sales { color: #126b34; background: #e3f7e9; }
+.mi-cost { color: #8a5406; background: #fff5d6; }
 `;
 
 /* ---------- Giao diện ---------- */
 
+const MENU_ITEMS = [
+  { id: 'import', icon: ArrowDownToLine, tone: 'mi-import', label: 'inv.menuImport' },
+  { id: 'export', icon: Truck, tone: 'mi-export', label: 'inv.menuExport' },
+  { id: 'transfer', icon: ArrowRightLeft, tone: 'mi-transfer', label: 'inv.menuTransfer' },
+  { id: 'material-ledger', icon: BookOpen, tone: 'mi-ledger', label: 'inv.materialLedger', report: true },
+  { id: 'stock-summary', icon: BarChart3, tone: 'mi-summary', label: 'inv.stockSummary', report: true },
+  { id: 'sales', icon: FileText, tone: 'mi-sales', label: 'inv.salesLedger', report: true },
+  { id: 'sales-cogs', icon: Receipt, tone: 'mi-cost', label: 'inv.salesCogs', report: true },
+];
+
 function Menu({ state, setState }) {
   const { t } = useI18n();
   return (<>
-    <h3>{t('inv.filters')}</h3>
-    {['all', 'import', 'export', 'return'].map((f) => (
-      <button key={f} className={'item' + (state.filterType === f ? ' on' : '')}
-        onClick={() => setState({ filterType: f, mode: 'list', editing: null, page: 1 })}>{t('inv.' + f)}</button>
-    ))}
+    <h3>{t('inv.title')}</h3>
+    {MENU_ITEMS.map((m) => {
+      const on = m.report ? state.report === m.id : (!state.report && state.filterType === m.id);
+      const Icon = m.icon;
+      return (
+        <button key={m.id} className={'item' + (on ? ' on' : '')}
+          onClick={() => setState(m.report
+            ? { report: m.id, mode: 'list', editing: null, page: 1 }
+            : { filterType: m.id, report: null, mode: 'list', editing: null, page: 1 })}>
+          <span className={'mico ' + m.tone} aria-hidden="true"><Icon size={16} /></span>
+          <span>{t(m.label)}</span>
+        </button>
+      );
+    })}
   </>);
 }
+
 
 // C: tạo phiếu Nhập/Xuất/Trả · R: xem danh sách + chi tiết · U/D: sửa/xóa trên danh sách hoặc trong form
 const ribbon = ({ setState, can }) => ({
@@ -175,7 +305,8 @@ const ribbon = ({ setState, can }) => ({
     { id: 'new-import', icon: '📥', label: 'inv.newImport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('import') }) },
     { id: 'new-export', icon: '📤', label: 'inv.newExport', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('export') }) },
     { id: 'new-return', icon: '↩️', label: 'inv.newReturn', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('return') }) },
-    { id: 'import-file', icon: '📂', label: 'inv.importFile', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'list', editing: null, importing: true }) },
+    { id: 'new-transfer', icon: '🔁', label: 'inv.newTransfer', disabled: !can('inventory', 'create'), onClick: () => setState({ mode: 'form', editing: blankDoc('transfer') }) },
+    { id: 'import-file', icon: '📂', label: 'inv.importFile', disabled: !can('inventory', 'import'), onClick: () => setState({ mode: 'list', editing: null, importing: true }) },
   ] }] }],
 });
 
@@ -322,13 +453,15 @@ async function importDocs(text, { can, t }) {
       if (!product) { err(g.line, notFound(sp.pname)); bad = true; break; }
       lines.push({ id: nextId(), product: { id: product.id, name: product.name, price: product.price }, qty: sp.qty, price: sp.price ?? product.price ?? 0 });
     }
-    if (bad) continue;
-
-    saveDoc({
-      type, partner: { id: partner.id, name: partner.name }, bank: bank ? { id: bank.id, name: bank.name } : null,
-      date, note: cell(g.r, 'note'), lines,
-    });
-    ok++;
+    try {
+      await saveDoc({
+        type, partner: { id: partner.id, name: partner.name }, bank: bank ? { id: bank.id, name: bank.name } : null,
+        date, note: cell(g.r, 'note'), lines,
+      }, true);
+      ok++;
+    } catch (e) {
+      err(g.line, e?.message ?? String(e));
+    }
   }
   return { ok, errors };
 }
@@ -390,7 +523,7 @@ function Pager({ page, totalPages, pageSize, setState, t }) {
   );
 }
 
-function ListView({ state, setState, docs, can, t }) {
+function ListView({ state, setState, docs, total, can, t, error, loading }) {
   const confirm = useConfirm();
   const [imp, setImp] = useState({ busy: false, result: null, key: 0 });
   const q = state.q ?? '';
@@ -398,19 +531,28 @@ function ListView({ state, setState, docs, can, t }) {
   const sort = state.sort ?? null;
   const pageSize = state.pageSize ?? PAGE_SIZES[1];
 
-  const all = applyView(docs, { filterType: state.filterType, q, filters, sort });
-  const total = all.length;
+  // Truy vấn ở SERVER: gõ xong 300ms mới gọi (debounce), đổi trang/dòng-trang/sắp xếp thì gọi ngay.
+  const critKey = JSON.stringify({ q, filterType: state.filterType, dateFrom: filters.dateFrom ?? '', dateTo: filters.dateTo ?? '' });
+  const settledKey = useDebounced(critKey, 300);
+  useEffect(() => {
+    if (critKey !== settledKey) return;                       // còn đang gõ ⇒ chưa gọi API
+    setState({ selected: [] }, { replace: true });            // đổi điều kiện/trang ⇒ bỏ lựa chọn cũ (tránh xoá nhầm)
+    load(buildQuery(state));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settledKey, state.page, pageSize, sort?.key, sort?.dir]);
+
+  const items = docs;                                         // server đã cắt trang
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(1, state.page ?? 1), totalPages);   // tự lùi trang khi dữ liệu co lại
-  const items = all.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { if (page !== (state.page ?? 1)) setState({ page }, { replace: true }); }, [page]);
 
-  const from = (page - 1) * pageSize + 1;
+  const from = total ? (page - 1) * pageSize + 1 : 0;
   const countLabel = total
     ? t('inv.range').replace('{from}', from).replace('{to}', from + items.length - 1).replace('{total}', total)
     : '';
   const hasCriteria = !!q || Object.values(filters).some((v) => v !== '' && v != null);
 
-  // Bấm tiêu đề cột: tăng dần -> giảm dần -> bỏ sắp xếp
+  // Bấm tiêu đề cột: tăng dần -> giảm dần -> bỏ sắp xếp (server nhận khoá qua whitelist sortable)
   const toggleSort = (key) => {
     const next = !sort || sort.key !== key ? { key, dir: 'asc' } : sort.dir === 'asc' ? { key, dir: 'desc' } : null;
     setState({ sort: next, page: 1 }, { replace: true });
@@ -418,14 +560,18 @@ function ListView({ state, setState, docs, can, t }) {
 
   const onDelete = async (d) => {
     if (!(await confirm(t('inv.confirmDelete').replace('{name}', d.no)))) return;
-    removeDoc(d.id);
+    try {
+      await removeDoc(d.id);
+    } catch (e) {
+      alert((t('inv.deleteFailed') || 'Xóa thất bại') + ': ' + (e?.message ?? e));
+    }
   };
 
   // ----- Chọn nhiều + xóa hàng loạt -----
-  // Chỉ tính các phiếu đang hiển thị theo bộ lọc hiện tại, để không lỡ xóa phiếu đang bị ẩn
+  // Lựa chọn chỉ áp dụng cho các phiếu TRÊN TRANG hiện tại (dữ liệu đã phân trang ở server)
   const canDelete = can('inventory', 'delete');
   const selSet = new Set(state.selected ?? []);
-  const selected = all.filter((d) => selSet.has(d.id));
+  const selected = items.filter((d) => selSet.has(d.id));
   const pageAllSelected = items.length > 0 && items.every((d) => selSet.has(d.id));
   const pageSomeSelected = items.some((d) => selSet.has(d.id));
   const setSel = (ids) => setState({ selected: ids }, { replace: true });
@@ -437,8 +583,12 @@ function ListView({ state, setState, docs, can, t }) {
   const onBulkDelete = async () => {
     if (!selected.length) return;
     if (!(await confirm(t('inv.confirmBulkDelete').replace('{n}', selected.length)))) return;
-    removeDocs(selected.map((d) => d.id));
-    setSel([]);
+    try {
+      await removeDocs(selected.map((d) => d.id));
+      setSel([]);
+    } catch (e) {
+      alert((t('inv.deleteFailed') || 'Xóa thất bại') + ': ' + (e?.message ?? e));
+    }
   };
 
   // ----- Import -----
@@ -458,19 +608,20 @@ function ListView({ state, setState, docs, can, t }) {
     { key: 'type', label: t('inv.type') },
     { key: 'partner', label: t('inv.partner') },
     { key: 'date', label: t('inv.date') },
-    { key: 'total', label: t('inv.grandTotal') },
+    // TODO(§10.5 architectural: cột grand_total): sắp xếp theo tổng cộng cần cột tổng trên inv_doc ⇒ tạm chưa sort ở server
+    { key: 'total', label: t('inv.grandTotal'), sortable: false },
   ];
 
   return (
     <div className="pad">
       <div className="ghead">
         <h2>{t('inv.title')}</h2>
-        {can('inventory', 'create') && (
+        {can('inventory', 'import') && (
           <button className="tb" onClick={() => setState({ importing: !state.importing }, { replace: true })}>📂 {t('inv.importFile')}</button>
         )}
       </div>
 
-      {state.importing && can('inventory', 'create') && (
+      {state.importing && can('inventory', 'import') && (
         <div className="importbox">
           <div className="importhead">
             <b>{t('inv.importTitle')}</b>
@@ -494,14 +645,19 @@ function ListView({ state, setState, docs, can, t }) {
         </div>
       )}
 
+      {error && (
+        <p className="formError" role="alert" style={{ margin: '8px 0', padding: '8px 12px', background: '#fdecea', color: '#b42318', borderRadius: 6 }}>
+          ⚠️ {t('inv.loadFailed')}: {error} <button type="button" className="tb" onClick={load} style={{ marginLeft: 8 }}>⟳ {t('common.refresh')}</button>
+        </p>
+      )}
+
       <Toolbar state={state} setState={setState} t={t} countLabel={countLabel} />
+
+      {loading && !items.length && <Loading />}
 
       {selected.length > 0 && (
         <div className="bulkbar" role="status">
           <b>{t('inv.selected').replace('{n}', selected.length)}</b>
-          {pageAllSelected && selected.length < total && (
-            <button type="button" className="tb" onClick={() => setSel(all.map((d) => d.id))}>{t('inv.selectAllResults').replace('{n}', total)}</button>
-          )}
           <button type="button" className="tb" onClick={() => setSel([])}>{t('inv.clearSel')}</button>
           <button type="button" className="tb" onClick={onBulkDelete}>🗑 {t('inv.deleteSelected')} ({selected.length})</button>
         </div>
@@ -517,6 +673,7 @@ function ListView({ state, setState, docs, can, t }) {
             )}
             {cols.map((c) => {
               const on = sort?.key === c.key;
+              if (c.sortable === false) return <th key={c.key}>{c.label}</th>;
               return (
                 <th key={c.key} className="sortable" aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                   <button type="button" className="thbtn" onClick={() => toggleSort(c.key)}>
@@ -538,6 +695,7 @@ function ListView({ state, setState, docs, can, t }) {
               )}
               <td>{d.no}</td><td>{t('inv.' + d.type)}</td><td>{d.partner?.name}</td><td>{d.date}</td><td>{vnd(lineTotal(d.lines))}</td>
               <td>
+                <button className="xbtn" title={t('inv.print')} aria-label={t('inv.print')} onClick={() => printVoucher(d, t)}>🖨</button>
                 <button className="xbtn" title={t('inv.edit')} aria-label={t('inv.edit')} onClick={() => setState({ mode: 'form', editing: d })}>✏️</button>
                 {can('inventory', 'delete') && (
                   <button className="xbtn" title={t('inv.deleteRow')} aria-label={t('inv.deleteRow')} onClick={() => onDelete(d)}>🗑</button>
@@ -565,12 +723,15 @@ function FormView({ state, setState, can, t }) {
   const savePerm = isNew ? can('inventory', 'create') : can('inventory', 'update');
   const partnerFetcher = editing.type === 'import' ? searchSuppliers : searchCustomers;
   const partnerStore = editing.type === 'import' ? suppliersStore : customersStore;
+  const showWarehouseIn = editing.type === 'import' || editing.type === 'return' || editing.type === 'transfer';
+  const showWarehouseOut = editing.type === 'export' || editing.type === 'transfer';
   const update = (patch) => setState({ editing: { ...editing, ...patch } }, { replace: true });
 
   // store.add của Danh mục là bất đồng bộ (bên Danh mục cũng `await store.add`), nên phải await
   // để lấy id thật; nếu không thì c.id / c.name là undefined và phiếu lưu ra dữ liệu hỏng.
   const createPartner = can('catalog', 'create') ? async (name) => { const c = await partnerStore.add({ name }); return { id: c.id, name: c.name }; } : undefined;
   const createBank = can('catalog', 'create') ? async (name) => { const b = await banksStore.add({ name }); return { id: b.id, name: b.name }; } : undefined;
+  const createWarehouse = can('catalog', 'create') ? async (name) => { const w = await warehousesStore.add({ name }); return { id: w.id, name: w.name }; } : undefined;
   const createMaterial = can('catalog', 'create') ? async (name) => { const m = await materialsStore.add({ name, unit: 'cái', price: 0, typeId: null }); return { id: m.id, name: m.name, price: 0 }; } : undefined;
   const updateLine = (id, patch) => update({ lines: editing.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) });
   const addLine = () => update({ lines: [...editing.lines, { id: Date.now() + Math.random(), product: null, qty: 1, price: 0 }] });
@@ -596,29 +757,59 @@ function FormView({ state, setState, can, t }) {
     update({ lines: next });
   };
   const endDrag = () => setDrag({ from: null, over: null });
-  const summary = [t('inv.' + editing.type), editing.partner?.name, editing.bank?.name, editing.date, editing.note].filter(Boolean).join(' · ');
+  const summary = [t('inv.' + editing.type), editing.partner?.name, editing.warehouseIn?.name, editing.warehouseOut?.name, editing.bank?.name, editing.date, editing.note].filter(Boolean).join(' · ');
 
-  const doSave = () => {
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const onExportExcel = async () => {
+    setExporting(true);
+    try {
+      await inventoryApi.exportExcel(editing.id, editing.no);
+    } catch (e) {
+      alert(t('inv.exportFailed') + ': ' + (e?.message ?? e));
+    } finally {
+      setExporting(false);
+    }
+  };
+  const doSave = async () => {
     const linesOk = editing.lines.every((l) => l.product?.id != null && l.qty > 0);
     if (!editing.partner || !editing.lines.length || !linesOk) { alert(t('inv.validate')); return; }
-    saveDoc(editing);
-    // Phiếu mới: bỏ tìm kiếm/lọc/sắp xếp/trang để phiếu vừa tạo hiện ngay ở đầu danh sách.
-    // Phiếu cũ: giữ nguyên bộ lọc người dùng đang xem.
-    setState(isNew
-      ? { mode: 'list', editing: null, filterType: 'all', ...EMPTY_VIEW }
-      : { mode: 'list', editing: null });
+    if (editing.type === 'transfer' && !(editing.warehouseIn?.id && editing.warehouseOut?.id)) {
+      alert(t('inv.validateWarehouse')); return;
+    }
+    setSaving(true);
+    try {
+      await saveDoc(editing);
+      // Phiếu mới: bỏ tìm kiếm/lọc/sắp xếp/trang để phiếu vừa tạo hiện ngay ở đầu danh sách.
+      // Phiếu cũ: giữ nguyên bộ lọc người dùng đang xem.
+      setState(isNew
+        ? { mode: 'list', editing: null, report: null, filterType: editing.type, ...EMPTY_VIEW }
+        : { mode: 'list', editing: null, report: null });
+    } catch (e) {
+      alert((t('inv.saveFailed') || 'Lưu phiếu thất bại') + ': ' + (e?.message ?? e));
+    } finally {
+      setSaving(false);
+    }
   };
   const doDelete = async () => {
     if (!(await confirm(t('inv.confirmDelete').replace('{name}', editing.no)))) return;
-    removeDoc(editing.id);
-    setState({ mode: 'list', editing: null });
+    try {
+      await removeDoc(editing.id);
+      setState({ mode: 'list', editing: null });
+    } catch (e) {
+      alert((t('inv.deleteFailed') || 'Xóa phiếu thất bại') + ': ' + (e?.message ?? e));
+    }
   };
 
   return (
     <div className="pad">
       <div className="ghead">
         <h2>{isNew ? t('inv.new' + editing.type[0].toUpperCase() + editing.type.slice(1)) : editing.no}</h2>
-        <button className="tb" onClick={() => setState({ mode: 'list', editing: null })}>← {t('inv.back')}</button>
+        <div>
+          {!isNew && <button className="tb" onClick={() => printVoucher(editing, t)}>🖨 {t('inv.print')}</button>}{' '}
+          {!isNew && can('inventory', 'export') && <button className="tb" disabled={exporting} onClick={onExportExcel}>⬇ {t('inv.exportExcel')}</button>}{' '}
+          <button className="tb" onClick={() => setState({ mode: 'list', editing: null })}>← {t('inv.back')}</button>
+        </div>
       </div>
 
       <div className="masterhead">
@@ -630,10 +821,18 @@ function FormView({ state, setState, can, t }) {
 
       {masterOpen && <div className="invmaster">
         <label>{t('inv.type')}
-          <select value={editing.type} disabled={!isNew} onChange={(e) => update({ type: e.target.value, partner: null })}>
+          <select value={editing.type} disabled={!isNew} onChange={(e) => {
+            const type = e.target.value;
+            update({
+              type, partner: null,
+              warehouseIn: (type === 'import' || type === 'return' || type === 'transfer') ? editing.warehouseIn : null,
+              warehouseOut: (type === 'export' || type === 'transfer') ? editing.warehouseOut : null,
+            });
+          }}>
             <option value="import">{t('inv.import')}</option>
             <option value="export">{t('inv.export')}</option>
             <option value="return">{t('inv.return')}</option>
+            <option value="transfer">{t('inv.transfer')}</option>
           </select>
         </label>
         <label>{editing.type === 'import' ? t('inv.supplier') : t('inv.customer')}
@@ -644,6 +843,18 @@ function FormView({ state, setState, can, t }) {
           <Autocomplete value={editing.bank} onChange={(b) => update({ bank: b })} fetcher={searchBanks} placeholder={t('inv.searchBank')}
             onCreate={createBank} createLabel={t('ac.create') + ' ' + t('inv.newBank')} />
         </label>
+        {showWarehouseIn && (
+          <label>{t('inv.warehouseIn')}
+            <Autocomplete value={editing.warehouseIn} onChange={(w) => update({ warehouseIn: w })} fetcher={searchWarehouses} placeholder={t('inv.searchWarehouse')}
+              onCreate={createWarehouse} createLabel={t('ac.create') + ' ' + t('inv.newWarehouse')} />
+          </label>
+        )}
+        {showWarehouseOut && (
+          <label>{t('inv.warehouseOut')}
+            <Autocomplete value={editing.warehouseOut} onChange={(w) => update({ warehouseOut: w })} fetcher={searchWarehouses} placeholder={t('inv.searchWarehouse')}
+              onCreate={createWarehouse} createLabel={t('ac.create') + ' ' + t('inv.newWarehouse')} />
+          </label>
+        )}
         <label>{t('inv.date')}<input type="date" value={editing.date} onChange={(e) => update({ date: e.target.value })} /></label>
         <label>{t('inv.note')}<input value={editing.note} onChange={(e) => update({ note: e.target.value })} /></label>
       </div>}
@@ -688,24 +899,312 @@ function FormView({ state, setState, can, t }) {
       <button className="tb" onClick={addLine}>➕ {t('inv.addLine')}</button>
 
       <div className="formActions">
-        <button className="btn" disabled={!savePerm} onClick={doSave}>{t('inv.save')}</button>
+        <button className="btn" disabled={!savePerm || saving} onClick={doSave}>{saving ? 'Đang lưu…' : t('inv.save')}</button>
         {!isNew && can('inventory', 'delete') && <button className="tb" onClick={doDelete}>🗑 {t('inv.delete')}</button>}
       </div>
     </div>
   );
 }
 
+/* ---------- Báo cáo kho (4-7) ---------- */
+
+const qtyText = (n) => (n == null ? '' : Number(n).toLocaleString('vi-VN'));
+
+function ReportRange({ state, setState, t }) {
+  return (<>
+    <label className="filter">
+      <span>{t('inv.dateFrom')}</span>
+      <input type="date" value={state.reportFrom ?? ''}
+        onChange={(e) => setState({ reportFrom: e.target.value }, { replace: true })} />
+    </label>
+    <label className="filter">
+      <span>{t('inv.dateTo')}</span>
+      <input type="date" value={state.reportTo ?? ''}
+        onChange={(e) => setState({ reportTo: e.target.value }, { replace: true })} />
+    </label>
+  </>);
+}
+
+function MaterialLedgerReport({ state, setState, t }) {
+  const materials = materialsStore.use().items;
+  const material = materials.find((m) => m.id === state.reportMaterialId) || null;
+  const params = {
+    materialId: state.reportMaterialId ?? '',
+    dateFrom: state.reportFrom ?? '',
+    dateTo: state.reportTo ?? '',
+  };
+  const { data, fetching, error, reload } = useAsyncQuery(
+    'invrep:material:' + JSON.stringify(params),
+    () => inventoryApi.materialLedger(params),
+    { enabled: !!params.materialId },
+  );
+  const rows = data?.items ?? [];
+
+  return (
+    <div className="pad">
+      <style>{CSS}</style>
+      <div className="ghead">
+        <h2>{t('inv.materialLedger')}</h2>
+        <button className="tb" onClick={reload}>⟳ {t('common.refresh')}</button>
+      </div>
+
+      <div className="cattools">
+        <label className="filter repac">
+          <span>{t('inv.materialName')}</span>
+          <Autocomplete value={material ? { id: material.id, name: material.name } : null}
+            onChange={(m) => setState({ reportMaterialId: m?.id ?? '' }, { replace: true })}
+            fetcher={searchMaterials} placeholder={t('inv.selectMaterial')} />
+        </label>
+        <ReportRange state={state} setState={setState} t={t} />
+        <span className="catcount">{fetching ? '⏳ ' : ''}{rows.length} {t('inv.lines')}</span>
+      </div>
+
+      {!params.materialId && <p className="repnote">{t('inv.materialRequired')}</p>}
+      {error && <p className="formError" role="alert">{t('inv.loadFailed')}: {error.message}</p>}
+
+      <div className="reportsum">
+        <span>{t('inv.openingQty')}: <b>{qtyText(data?.openingQty)}</b></span>
+        <span>{t('inv.openingValue')}: <b>{vnd(data?.openingValue)}</b></span>
+        <span>{t('inv.inQty')}: <b>{qtyText(data?.totalInQty)}</b></span>
+        <span>{t('inv.outQty')}: <b>{qtyText(data?.totalOutQty)}</b></span>
+        <span>{t('inv.closingQty')}: <b>{qtyText(data?.closingQty)}</b></span>
+        <span>{t('inv.closingValue')}: <b>{vnd(data?.closingValue)}</b></span>
+      </div>
+
+      <table className="invtable zebra" aria-busy={fetching}>
+        <thead>
+          <tr>
+            <th>{t('inv.date')}</th>
+            <th>{t('inv.no')}</th>
+            <th>{t('inv.type')}</th>
+            <th>{t('inv.partner')}</th>
+            <th className="num">{t('inv.qty')}</th>
+            <th className="num">{t('inv.price')}</th>
+            <th className="num">{t('inv.lineTotal')}</th>
+            <th className="num">{t('inv.balanceQty')}</th>
+            <th className="num">{t('inv.balanceValue')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan={7}><b>{t('inv.openingQty')}</b></td>
+            <td className="num"><b>{qtyText(data?.openingQty)}</b></td>
+            <td className="num"><b>{vnd(data?.openingValue)}</b></td>
+          </tr>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.no}</td>
+              <td>{t('inv.' + r.type)}</td>
+              <td>{r.partnerName || ''}</td>
+              <td className="num">{qtyText(r.qty)}</td>
+              <td className="num">{vnd(r.price)}</td>
+              <td className="num">{vnd(r.amount)}</td>
+              <td className="num">{qtyText(r.balanceQty)}</td>
+              <td className="num">{vnd(r.balanceValue)}</td>
+            </tr>
+          ))}
+          {!rows.length && !fetching && params.materialId && (
+            <tr><td colSpan={9} className="empty">{t('inv.reportEmpty')}</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StockSummaryReport({ state, setState, t }) {
+  const q = state.reportQ ?? '';
+  const settledQ = useDebounced(q, 300);
+  const params = { dateFrom: state.reportFrom ?? '', dateTo: state.reportTo ?? '', q: settledQ };
+  const { data, fetching, error, reload } = useAsyncQuery(
+    'invrep:nxt:' + JSON.stringify(params),
+    () => inventoryApi.stockSummary(params),
+    { enabled: q === settledQ },
+  );
+  const rows = data?.items ?? [];
+  const totals = data?.totals ?? {};
+
+  return (
+    <div className="pad">
+      <style>{CSS}</style>
+      <div className="ghead">
+        <h2>{t('inv.stockSummary')}</h2>
+        <button className="tb" onClick={reload}>⟳ {t('common.refresh')}</button>
+      </div>
+
+      <div className="cattools">
+        <div className="searchbox">
+          <span aria-hidden="true">🔍</span>
+          <input type="search" value={q} placeholder={t('inv.reportSearch')} aria-label={t('inv.reportSearch')}
+            onChange={(e) => setState({ reportQ: e.target.value }, { replace: true })} />
+          {q && <button type="button" className="xbtn" title={t('inv.clear')}
+            onClick={() => setState({ reportQ: '' }, { replace: true })}>✕</button>}
+        </div>
+        <ReportRange state={state} setState={setState} t={t} />
+        <span className="catcount">{fetching ? '⏳ ' : ''}{rows.length} {t('inv.materialName')}</span>
+      </div>
+
+      {error && <p className="formError" role="alert">{t('inv.loadFailed')}: {error.message}</p>}
+
+      <table className="invtable zebra" aria-busy={fetching}>
+        <thead>
+          <tr>
+            <th>{t('inv.materialCode')}</th>
+            <th>{t('inv.materialName')}</th>
+            <th>{t('inv.unit')}</th>
+            <th className="num">{t('inv.openingQty')}</th>
+            <th className="num">{t('inv.openingValue')}</th>
+            <th className="num">{t('inv.inQty')}</th>
+            <th className="num">{t('inv.inValue')}</th>
+            <th className="num">{t('inv.outQty')}</th>
+            <th className="num">{t('inv.outValue')}</th>
+            <th className="num">{t('inv.closingQty')}</th>
+            <th className="num">{t('inv.closingValue')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.productId}>
+              <td>{r.code}</td>
+              <td>{r.name}</td>
+              <td>{r.unit}</td>
+              <td className="num">{qtyText(r.openingQty)}</td>
+              <td className="num">{vnd(r.openingValue)}</td>
+              <td className="num">{qtyText(r.inQty)}</td>
+              <td className="num">{vnd(r.inValue)}</td>
+              <td className="num">{qtyText(r.outQty)}</td>
+              <td className="num">{vnd(r.outValue)}</td>
+              <td className="num">{qtyText(r.closingQty)}</td>
+              <td className="num">{vnd(r.closingValue)}</td>
+            </tr>
+          ))}
+          {!rows.length && !fetching && (
+            <tr><td colSpan={11} className="empty">{t('inv.reportEmpty')}</td></tr>
+          )}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={3}><b>{t('inv.grandTotal')}</b></td>
+            <td className="num"><b>{qtyText(totals.openingQty)}</b></td>
+            <td className="num"><b>{vnd(totals.openingValue)}</b></td>
+            <td className="num"><b>{qtyText(totals.inQty)}</b></td>
+            <td className="num"><b>{vnd(totals.inValue)}</b></td>
+            <td className="num"><b>{qtyText(totals.outQty)}</b></td>
+            <td className="num"><b>{vnd(totals.outValue)}</b></td>
+            <td className="num"><b>{qtyText(totals.closingQty)}</b></td>
+            <td className="num"><b>{vnd(totals.closingValue)}</b></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function SalesReport({ state, setState, t, withCost }) {
+  const q = state.reportQ ?? '';
+  const settledQ = useDebounced(q, 300);
+  const params = { dateFrom: state.reportFrom ?? '', dateTo: state.reportTo ?? '', q: settledQ };
+  const { data, fetching, error, reload } = useAsyncQuery(
+    'invrep:sales:' + withCost + ':' + JSON.stringify(params),
+    () => (withCost ? inventoryApi.salesCogs(params) : inventoryApi.sales(params)),
+    { enabled: q === settledQ },
+  );
+  const rows = data?.items ?? [];
+  const totals = data?.totals ?? {};
+
+  return (
+    <div className="pad">
+      <style>{CSS}</style>
+      <div className="ghead">
+        <h2>{t(withCost ? 'inv.salesCogs' : 'inv.salesLedger')}</h2>
+        <button className="tb" onClick={reload}>⟳ {t('common.refresh')}</button>
+      </div>
+
+      <div className="cattools">
+        <div className="searchbox">
+          <span aria-hidden="true">🔍</span>
+          <input type="search" value={q} placeholder={t('inv.reportSearch')} aria-label={t('inv.reportSearch')}
+            onChange={(e) => setState({ reportQ: e.target.value }, { replace: true })} />
+          {q && <button type="button" className="xbtn" title={t('inv.clear')}
+            onClick={() => setState({ reportQ: '' }, { replace: true })}>✕</button>}
+        </div>
+        <ReportRange state={state} setState={setState} t={t} />
+        <span className="catcount">{fetching ? '⏳ ' : ''}{rows.length} {t('inv.lines')}</span>
+      </div>
+
+      {error && <p className="formError" role="alert">{t('inv.loadFailed')}: {error.message}</p>}
+
+      <table className="invtable zebra" aria-busy={fetching}>
+        <thead>
+          <tr>
+            <th>{t('inv.date')}</th>
+            <th>{t('inv.no')}</th>
+            <th>{t('inv.customer')}</th>
+            <th>{t('inv.product')}</th>
+            <th className="num">{t('inv.qty')}</th>
+            <th className="num">{t('inv.price')}</th>
+            <th className="num">{t('inv.revenue')}</th>
+            {withCost && <th className="num">{t('inv.cost')}</th>}
+            {withCost && <th className="num">{t('inv.profit')}</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.no}</td>
+              <td>{r.partnerName || ''}</td>
+              <td>{r.productName}</td>
+              <td className="num">{qtyText(r.qty)}</td>
+              <td className="num">{vnd(r.price)}</td>
+              <td className="num">{vnd(r.revenue)}</td>
+              {withCost && <td className="num">{vnd(r.cost)}</td>}
+              {withCost && <td className="num">{vnd(r.profit)}</td>}
+            </tr>
+          ))}
+          {!rows.length && !fetching && (
+            <tr><td colSpan={withCost ? 9 : 7} className="empty">{t('inv.reportEmpty')}</td></tr>
+          )}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={6}><b>{t('inv.grandTotal')}</b></td>
+            <td className="num"><b>{vnd(totals.revenue)}</b></td>
+            {withCost && <td className="num"><b>{vnd(totals.cost)}</b></td>}
+            {withCost && <td className="num"><b>{vnd(totals.profit)}</b></td>}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+function ReportView({ state, setState, t }) {
+  switch (state.report) {
+    case 'material-ledger': return <MaterialLedgerReport state={state} setState={setState} t={t} />;
+    case 'stock-summary': return <StockSummaryReport state={state} setState={setState} t={t} />;
+    case 'sales': return <SalesReport state={state} setState={setState} t={t} withCost={false} />;
+    case 'sales-cogs': return <SalesReport state={state} setState={setState} t={t} withCost />;
+    default: return null;
+  }
+}
+
 // Toàn bộ hook nằm trong Body; View chỉ kiểm tra quyền rồi mới mount Body (không vi phạm thứ tự hook).
 function Body(props) {
   const { state } = props;
   const { t } = useI18n();
-  const { docs, loading } = useDocs();
-  if (loading) return <Loading />;
+  const { docs, total, loading, error } = useDocs();
+  // KHÔNG return <Loading /> ở đây: unmount ListView sẽ chạy lại effect tải dữ liệu khi mount
+  // (mount → load → unmount → mount → load …) ⇒ vòng lặp request vô hạn khi kết quả rỗng.
+  // Spinner được hiển thị bên trong ListView để component luôn được giữ mount.
   return (<>
     <style>{CSS}</style>
     {state.mode === 'form' && state.editing
       ? <FormView {...props} t={t} />
-      : <ListView {...props} docs={docs} t={t} />}
+      : state.report
+        ? <ReportView state={state} setState={props.setState} t={t} />
+        : <ListView {...props} docs={docs} total={total} error={error} loading={loading} t={t} />}
   </>);
 }
 
@@ -716,6 +1215,6 @@ function View(props) {
 
 export default {
   id: 'inventory', title: 'inv.title', icon: '📦', order: 5, messages, search, refresh: load,
-  initialState: { mode: 'list', filterType: 'all', editing: null, pageSize: 5, selected: [], importing: false, ...EMPTY_VIEW }, Menu, ribbon, View,
-  setup() { load(); },
+  initialState: { mode: 'list', filterType: 'all', report: null, reportFrom: firstOfMonth(), reportTo: today(), reportMaterialId: '', reportQ: '', editing: null, pageSize: 5, selected: [], importing: false, ...EMPTY_VIEW }, Menu, ribbon, View,
+  // Không còn setup(){ load() }: dữ liệu kho nay cần đăng nhập (CS-S1) và Body tự tải theo truy vấn hiện tại.
 };
