@@ -1,0 +1,31 @@
+# Stage 1: build the native executable with Mandrel (GraalVM) + Node.js for the Quinoa frontend
+FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-25 AS build
+
+USER root
+ARG NODE_VERSION=22.23.3
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    | tar -xJ -C /usr/local --strip-components=1
+
+WORKDIR /build
+COPY pom.xml ./
+COPY .mvn .mvn
+COPY mvnw ./
+RUN chmod +x mvnw && ./mvnw -B -ntp -DskipTests dependency:go-offline
+
+COPY src ./src
+RUN ./mvnw -B -ntp -DskipTests package -Dnative -Dquarkus.native.container-build=false
+
+# Stage 2: minimal UBI Micro runtime with the standalone native binary
+FROM quay.io/quarkus/quarkus-micro-image:2.0
+
+WORKDIR /work/
+COPY --from=build --chown=1001:root /build/target/*-runner /work/application
+RUN chown 1001:root /work \
+    && chmod "g+rwX" /work \
+    && chmod 0755 /work/application
+
+EXPOSE 8080
+USER 1001
+
+ENTRYPOINT ["./application", "-Dquarkus.http.host=0.0.0.0"]
+

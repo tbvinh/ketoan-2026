@@ -12,3 +12,5 @@ src/main/webui/dist
 postgres_data
 .deployment-package
 deployment-package.tar.gz
+.deployment-package-native
+deployment-package-native.tar.gz

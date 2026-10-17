@@ -3,7 +3,9 @@ node_modules/
 postgres_data/
 uploads/
 .deployment-package/
+.deployment-package-native/
 deployment-package.tar.gz
+deployment-package-native.tar.gz
 .env
 .env.local
 privateKey.pem

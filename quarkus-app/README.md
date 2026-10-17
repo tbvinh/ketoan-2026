@@ -86,6 +86,8 @@ docker compose up -d pgadmin
 
 docker compose up -d postgres
 
+docker stats --no-stream
+
 1. Change quarkus/src/main/resources/*pem-sample to *.pem
 2. Change quarkus/src/main/webui/.env.local-sample to .env.local
 
