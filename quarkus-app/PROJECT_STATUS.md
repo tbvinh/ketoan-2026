@@ -53,8 +53,9 @@
    * Validate `create/update` ở server (đối tác bắt buộc, `qty > 0`, `price >= 0`, độ dài `note`) ⇒ 400 `{"message":…}` thay vì 500.
    * Sinh số phiếu bằng `inv_doc_counter` (tránh trùng khi đồng thời + không tái sử dụng số đã xoá).
    * DTO cho danh sách (không kèm `lines`, có `grandTotal`) để bỏ N+1 và giảm payload.
-3. **Dọn dẹp mã nguồn (Cleanup)**:
+3. ~~**Dọn dẹp mã nguồn (Cleanup)**~~ ✅ **ĐÃ XONG (19/10/2026)**:
    * Loại bỏ các file copy/backup thừa (`*copy*.jsx`, `router-3.js`).
+   * Loại bỏ thư mục legacy `src/main/webui-v1`.
    * Loại bỏ các khai báo dependency trùng lặp trong `pom.xml` (`quarkus-qute`, `quarkus-hibernate-orm-panache`).
 4. **Cập nhật Unit/Integration Tests**:
    * Viết test kiểm tra luồng loginv1 và CRUD phiếu kho.

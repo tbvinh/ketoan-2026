@@ -2,6 +2,13 @@
 
 Toàn bộ các thay đổi quan trọng của dự án được ghi nhận tại file này theo định dạng chuẩn [Keep a Changelog](https://keepachangelog.com/).
 
+## [Dọn dẹp mã nguồn & Dependencies] - 2026-10-19
+
+### Removed
+* **Thư mục legacy `src/main/webui-v1`**: Xóa toàn bộ mã nguồn cũ và các dependency cục bộ không còn sử dụng.
+* **Các file backup/copy thừa**: Xóa các file `*copy*.jsx` và `router-3.js` trong `src/main/webui/src/core/`, `catalog/`, và `inventory/`.
+* **Khai báo dependency trùng lặp trong `pom.xml`**: Loại bỏ các khai báo trùng lặp của `quarkus-qute` và `quarkus-hibernate-orm-panache`.
+
 ---
 
 ## [Dữ liệu mẫu Phiếu kho] - 2026-10-16
