@@ -1,2 +1,13 @@
-#quarkus-app
-cookies.txt
+target
+node_modules/
+postgres_data/
+uploads/
+.deployment-package/
+.deployment-package-native/
+deployment-package.tar.gz
+deployment-package-native.tar.gz
+.env
+.env.local
+privateKey.pem
+publicKey.pem
+rsaPrivateKey.pem
