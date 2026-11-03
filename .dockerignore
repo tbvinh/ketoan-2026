@@ -8,8 +8,13 @@ target
 !src/main/webui/.env.local
 cookies.txt
 node_modules
+src/main/webui/node_modules
 src/main/webui/dist
 postgres_data
+uploads
+images
+.gitnexus
+quarkus-app
 .deployment-package
 deployment-package.tar.gz
 .deployment-package-native

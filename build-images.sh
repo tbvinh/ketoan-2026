@@ -23,7 +23,7 @@ docker pull "$NGINX_IMAGE"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/images"
 
-cp "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/start.sh" "$STAGE_DIR/"
+cp "$SCRIPT_DIR/docker-compose.yml" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/start.sh" "$SCRIPT_DIR/install.bat" "$SCRIPT_DIR/start.bat" "$STAGE_DIR/"
 cp -r "$SCRIPT_DIR/nginx" "$STAGE_DIR/"
 chmod +x "$STAGE_DIR/install.sh" "$STAGE_DIR/start.sh"
 

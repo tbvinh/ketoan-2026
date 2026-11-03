@@ -76,7 +76,121 @@ Easily start your RESTful Web Services
 //   openssl pkcs8 -topk8 -nocrypt -inform pem -in rsaPrivateKey.pem -outform pem -out privateKey.pem
 //   (xóa rsaPrivateKey.pem; KHÔNG commit privateKey.pem lên git, production nên nạp từ secret/đường dẫn ngoài)
 
-## run 
+## Đóng gói & Cài đặt cho Khách hàng (Windows / Linux)
+
+Bộ cài đặt đóng gói sẵn toàn bộ Docker images (`app`, `postgres:16-alpine`, `nginx:1.27-alpine`), file cấu hình và script khởi chạy. Máy khách hàng chỉ cần có sẵn **Docker** (Docker Engine trên Linux hoặc Docker Desktop trên Windows) và **không cần** kết nối Internet để tải image.
+
+### 1. Tạo bộ cài đặt (trên máy Dev / Build)
+
+Có 2 chế độ đóng gói:
+
+* **Bản JVM (nhanh, tương thích rộng):**
+  ```bash
+  ./build-images.sh
+  ```
+  Kết quả tạo ra file: `deployment-package.tar.gz`
+
+* **Bản Native GraalVM (khởi động cực nhanh, tốn ít RAM):**
+  ```bash
+  ./build-images-native.sh
+  ```
+  Kết quả tạo ra file: `deployment-package-native.tar.gz`
+
+Bên trong gói `.tar.gz` bao gồm:
+```text
+├── docker-compose.yml
+├── .env.example
+├── install.sh / start.sh       # Dành cho Linux / macOS / Git Bash
+├── install.bat / start.bat     # Dành cho Windows (CMD / PowerShell)
+├── nginx/
+│   └── default.conf
+└── images/
+    ├── app-image.tar.gz
+    ├── postgres-image.tar.gz
+    └── nginx-image.tar.gz
+```
+
+---
+
+### 2. Cài đặt và chạy trên máy Khách hàng (Linux)
+
+1. **Giải nén gói cài đặt:**
+   ```bash
+   mkdir -p ketoan && tar -xzf deployment-package.tar.gz -C ketoan
+   cd ketoan
+   ```
+
+2. **Chạy cài đặt lần đầu** (tạo thư mục `postgres_data`, `uploads`, nạp Docker images từ `./images` và sinh file `.env`):
+   ```bash
+   chmod +x install.sh start.sh
+   ./install.sh
+   ```
+   *(Tùy chọn)* Mở file `.env` để đổi cổng `HTTP_PORT` (mặc định là `80`, ví dụ đổi thành `HTTP_PORT=8080` nếu cổng 80 đang bận).
+
+3. **Khởi động hệ thống:**
+   ```bash
+   ./start.sh
+   ```
+   Truy cập ứng dụng tại: `http://localhost` (hoặc `http://localhost:<HTTP_PORT>`).
+
+---
+
+### 3. Cài đặt và chạy trên máy Khách hàng (Windows)
+
+1. **Yêu cầu:** Cài đặt và bật sẵn **Docker Desktop** (đợi biểu tượng Docker ở góc dưới bên phải báo *Engine running*).
+2. **Giải nén gói cài đặt** (bằng 7-Zip, WinRAR hoặc lệnh `tar` có sẵn trên Windows 10/11):
+   ```cmd
+   mkdir C:\ketoan
+   tar -xzf deployment-package.tar.gz -C C:\ketoan
+   cd /d C:\ketoan
+   ```
+3. **Chạy cài đặt lần đầu** (trong `cmd` hoặc `PowerShell`, hoặc nháy đúp vào `install.bat`):
+   ```cmd
+   install.bat
+   ```
+   *(Tùy chọn)* Mở file `.env` bằng Notepad để chỉnh `HTTP_PORT=8080` nếu cổng `80` trên Windows đang bị IIS/hệ thống chiếm.
+4. **Khởi động hệ thống:**
+   ```cmd
+   start.bat
+   ```
+   Truy cập ứng dụng tại: `http://localhost` (hoặc `http://localhost:<HTTP_PORT>`).
+
+---
+
+### 4. Các lệnh quản trị thường dùng trên máy Khách hàng
+
+* **Xem trạng thái các container:**
+  ```bash
+  docker compose ps
+  ```
+* **Xem log ứng dụng:**
+  ```bash
+  docker compose logs -f app
+  ```
+* **Dừng hệ thống:**
+  ```bash
+  docker compose stop
+  ```
+* **Khởi động lại hệ thống:**
+  ```bash
+  docker compose restart
+  ```
+
+---
+
+## Chạy chế độ Debug / Dev (trên máy lập trình)
+
+1. Chỉ chạy PostgreSQL trong Docker:
+   ```bash
+   docker compose up -d postgres
+   ```
+2. Chạy Quarkus Dev trên máy host (tự động phục vụ cả `/api/*`, giao diện React Quinoa và `/uploads/*`):
+   ```bash
+   ./mvnw quarkus:dev
+   ```
+   *(Nếu muốn chạy thêm container `nginx` khi debug: `docker compose up -d postgres nginx`, Nginx sẽ tự động fallback về `host.docker.internal:8080` khi container `app` tắt).*
+
+## Các lệnh tham khảo khác
 
 docker compose --env-file .env up postgres nginx -d
 

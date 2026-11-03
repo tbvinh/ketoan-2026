@@ -2,6 +2,7 @@ target
 node_modules/
 postgres_data/
 uploads/
+src/main/webui/dist/
 .deployment-package/
 .deployment-package-native/
 deployment-package.tar.gz
