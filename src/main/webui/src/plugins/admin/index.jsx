@@ -53,11 +53,14 @@ const messages = {
     'admin.provisionNote': 'Tạo công ty sẽ tự tạo schema PostgreSQL và chạy migration cho tenant.',
     'admin.companySaved': 'Đã lưu công ty', 'admin.noData': 'Chưa có dữ liệu.',
     'admin.exportCompany': 'Xuất dữ liệu công ty (CSV ZIP)', 'admin.importCompany': 'Nhập dữ liệu công ty',
-    'admin.importFile': 'Tệp sao lưu (.zip)', 'admin.importTarget': 'Công ty đích',
-    'admin.importNew': 'Tạo công ty mới từ bản sao lưu', 'admin.importAction': 'Nhập dữ liệu',
+    'admin.selectAllCompanies': 'Chọn tất cả', 'admin.unselectAllCompanies': 'Bỏ chọn tất cả',
+    'admin.exportSelected': 'Xuất công ty đã chọn ({n})', 'admin.exportingSelected': 'Đang xuất ({n})…',
+    'admin.importFile': 'Tệp sao lưu (.zip — hỗ trợ gói 1 công ty, gói nhiều công ty hoặc chọn nhiều tệp)', 'admin.importTarget': 'Công ty đích',
+    'admin.importNew': 'Tự động tạo mới / cập nhật theo mã công ty trong bản sao lưu', 'admin.importAction': 'Nhập dữ liệu',
     'admin.importing': 'Đang nhập…', 'admin.importProgress': 'Đang xử lý {p}%',
-    'admin.importHint': 'Tệp .zip (CSV) xuất từ "Xuất dữ liệu công ty". Dữ liệu công ty đích sẽ được thay thế.',
+    'admin.importHint': 'Chấp nhận tệp .csv.zip của từng công ty hoặc gói nhiều công ty (companies-backup-*.zip).',
     'admin.importDone': 'Đã nhập {rows} dòng / {tables} bảng (schema {version}).',
+    'admin.importMultiDone': 'Đã nhập {companies} công ty ({codes}) — tổng {rows} dòng / {tables} bảng.',
     'admin.cloneCompany': 'Nhân bản công ty',
     'admin.cloneHint': 'Tạo bản sao đầy đủ dữ liệu từ công ty "{name}".',
     'admin.cloneAction': 'Nhân bản', 'admin.cloning': 'Đang nhân bản…',
@@ -138,11 +141,14 @@ const messages = {
     'admin.provisionNote': 'Creating a company provisions its PostgreSQL schema and runs tenant migrations.',
     'admin.companySaved': 'Company saved', 'admin.noData': 'No data yet.',
     'admin.exportCompany': 'Export company (CSV ZIP)', 'admin.importCompany': 'Import company',
-    'admin.importFile': 'Backup file (.zip)', 'admin.importTarget': 'Target company',
-    'admin.importNew': 'Create a new company from the backup', 'admin.importAction': 'Import data',
+    'admin.selectAllCompanies': 'Select all', 'admin.unselectAllCompanies': 'Unselect all',
+    'admin.exportSelected': 'Export selected ({n})', 'admin.exportingSelected': 'Exporting ({n})…',
+    'admin.importFile': 'Backup file (.zip — single company, multi-company bundle, or multiple files)', 'admin.importTarget': 'Target company',
+    'admin.importNew': 'Auto-create / update by company code in backup', 'admin.importAction': 'Import data',
     'admin.importing': 'Importing…', 'admin.importProgress': 'Processing {p}%',
-    'admin.importHint': 'A .zip (CSV) file produced by "Export company". The target company data will be replaced.',
+    'admin.importHint': 'Accepts single-company .csv.zip or multi-company bundle (companies-backup-*.zip).',
     'admin.importDone': 'Imported {rows} rows / {tables} tables (schema {version}).',
+    'admin.importMultiDone': 'Imported {companies} companies ({codes}) — {rows} rows / {tables} tables.',
     'admin.cloneCompany': 'Clone company',
     'admin.cloneHint': 'Create a full data copy of "{name}".',
     'admin.cloneAction': 'Clone', 'admin.cloning': 'Cloning…',
@@ -970,8 +976,10 @@ function Companies({ can, onOpenTruncate }) {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [exportingBatch, setExportingBatch] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [importFile, setImportFile] = useState(null);
+  const [importFiles, setImportFiles] = useState([]);
   const [importTarget, setImportTarget] = useState('');
   const [restoreUsers, setRestoreUsers] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -995,6 +1003,7 @@ function Companies({ can, onOpenTruncate }) {
         adminApi.users.list().catch(() => ({ items: [] })),
       ]);
       setRows(all ?? []);
+      setSelectedIds((cur) => cur.filter((id) => (all ?? []).some((r) => r.id === id)));
       setCompanies(available ?? []);
       setAllUsers(userRes?.items ?? []);
     } catch (e) {
@@ -1114,9 +1123,38 @@ function Companies({ can, onOpenTruncate }) {
     }
   };
 
+  const allCompanyIds = rows.map((r) => r.id);
+  const allCompaniesSelected = allCompanyIds.length > 0 && allCompanyIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectCompany = (id) => {
+    setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  };
+
+  const toggleSelectAllCompanies = () => {
+    setSelectedIds(allCompaniesSelected ? [] : allCompanyIds);
+  };
+
+  const exportSelectedCompanies = async () => {
+    if (!selectedIds.length || exportingBatch) return;
+    setExportingBatch(true);
+    setError(null);
+    try {
+      if (selectedIds.length === 1) {
+        const single = rows.find((r) => r.id === selectedIds[0]);
+        await adminApi.companies.export(selectedIds[0], single?.code);
+      } else {
+        await adminApi.companies.exportBatch(selectedIds);
+      }
+    } catch (e) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setExportingBatch(false);
+    }
+  };
+
   const openImport = () => {
     setImportOpen(true);
-    setImportFile(null);
+    setImportFiles([]);
     setImportTarget('');
     setRestoreUsers(true);
     setImportPct(0);
@@ -1125,16 +1163,51 @@ function Companies({ can, onOpenTruncate }) {
   };
 
   const importCompany = async () => {
-    if (!importFile || importing) return;
+    if (!importFiles.length || importing) return;
     setImporting(true);
     setImportPct(0);
     setImportError(null);
     setImportResult(null);
     try {
-      const result = await adminApi.companies.import(importFile, importTarget || null, setImportPct, restoreUsers);
-      setImportResult(result);
+      if (importFiles.length === 1) {
+        const result = await adminApi.companies.import(importFiles[0], importTarget || null, setImportPct, restoreUsers);
+        setImportResult(result);
+      } else {
+        let totalTables = 0;
+        let totalRows = 0;
+        let totalUsers = 0;
+        let totalCos = 0;
+        const codes = [];
+        for (let i = 0; i < importFiles.length; i++) {
+          const f = importFiles[i];
+          const res = await adminApi.companies.import(
+            f,
+            null,
+            (pct) => setImportPct(Math.round(((i + pct / 100) / importFiles.length) * 100)),
+            restoreUsers,
+          );
+          if (res?.multi) {
+            totalCos += Number(res.companyCount ?? 0);
+            if (Array.isArray(res.codes)) codes.push(...res.codes);
+          } else {
+            totalCos += 1;
+            if (res?.code) codes.push(res.code);
+          }
+          totalTables += Number(res?.tables ?? 0);
+          totalRows += Number(res?.rows ?? 0);
+          totalUsers += Number(res?.usersRestored ?? 0);
+        }
+        setImportResult({
+          multi: true,
+          companyCount: totalCos,
+          codes,
+          tables: totalTables,
+          rows: totalRows,
+          usersRestored: totalUsers,
+        });
+      }
       setImportPct(100);
-      setImportFile(null);
+      setImportFiles([]);
       resetAllStores();
       await load(true);
     } catch (e) {
@@ -1301,6 +1374,16 @@ function Companies({ can, onOpenTruncate }) {
             ➕ {t('admin.newCompany')}
           </button>
         )}
+        {rows.length > 0 && (
+          <button type="button" className="tb" onClick={toggleSelectAllCompanies}>
+            {allCompaniesSelected ? `☐ ${t('admin.unselectAllCompanies')}` : `☑ ${t('admin.selectAllCompanies')} (${rows.length})`}
+          </button>
+        )}
+        {can('admin', 'export') && (
+          <button type="button" className="tb" disabled={!selectedIds.length || exportingBatch} onClick={exportSelectedCompanies}>
+            ⬇ {(exportingBatch ? t('admin.exportingSelected') : t('admin.exportSelected')).replace('{n}', selectedIds.length)}
+          </button>
+        )}
         {can('admin', 'import') && (
           <button type="button" className="tb" onClick={openImport}>⬆ {t('admin.importCompany')}</button>
         )}
@@ -1312,87 +1395,100 @@ function Companies({ can, onOpenTruncate }) {
       <table className="invtable zebra">
         <thead>
           <tr>
+            <th style={{ width: 36, textAlign: 'center' }}>
+              <input type="checkbox" checked={allCompaniesSelected} onChange={toggleSelectAllCompanies}
+                disabled={!rows.length} aria-label={t('admin.selectAllCompanies')} />
+            </th>
             <th>{t('admin.companyCode')}</th><th>{t('admin.companyName')}</th>
             <th>{t('admin.schemaName')}</th><th>{t('admin.companyOwnerCol')}</th>
             <th>{t('admin.companyStatus')}</th><th>{t('admin.createdAt')}</th><th>{t('admin.actions')}</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td>{row.code}</td>
-              <td>{row.name}</td>
-              <td><code>{row.schemaName}</code></td>
-              <td>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {(row.users ?? []).map((u) => (
-                    <span key={u.id} className="rolebadge"
-                      style={u.isOwner ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : undefined}
-                      title={u.fullName || u.username}>
-                      {u.isOwner ? `★ ${u.username}` : u.username}
-                    </span>
-                  ))}
-                  {!row.ownerUsername && can('admin', 'update') && (
-                    <button type="button" className="tb" style={{ padding: '2px 8px', fontSize: 12 }}
-                      onClick={() => quickCreateOwner(row)}
-                      title={`Tạo nhanh tài khoản Owner ${row.suggestedOwnerUsername || slugOwnerUsername(row.code)} (mật khẩu 123456)`}>
-                      ⚡ Tạo <code>{row.suggestedOwnerUsername || slugOwnerUsername(row.code)}</code>
-                    </button>
+          {rows.map((row) => {
+            const isChecked = selectedIds.includes(row.id);
+            return (
+              <tr key={row.id} className={isChecked ? 'sel' : ''} onClick={() => toggleSelectCompany(row.id)} style={{ cursor: 'pointer' }}>
+                <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={isChecked} onChange={() => toggleSelectCompany(row.id)}
+                    aria-label={`${row.code} - ${row.name}`} />
+                </td>
+                <td>{row.code}</td>
+                <td>{row.name}</td>
+                <td><code>{row.schemaName}</code></td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {(row.users ?? []).map((u) => (
+                      <span key={u.id} className="rolebadge"
+                        style={u.isOwner ? { background: '#fef3c7', color: '#92400e', borderColor: '#f59e0b' } : undefined}
+                        title={u.fullName || u.username}>
+                        {u.isOwner ? `★ ${u.username}` : u.username}
+                      </span>
+                    ))}
+                    {!row.ownerUsername && can('admin', 'update') && (
+                      <button type="button" className="tb" style={{ padding: '2px 8px', fontSize: 12 }}
+                        onClick={() => quickCreateOwner(row)}
+                        title={`Tạo nhanh tài khoản Owner ${row.suggestedOwnerUsername || slugOwnerUsername(row.code)} (mật khẩu 123456)`}>
+                        ⚡ Tạo <code>{row.suggestedOwnerUsername || slugOwnerUsername(row.code)}</code>
+                      </button>
+                    )}
+                  </div>
+                </td>
+                <td>{row.status === 'active' ? t('admin.companyActive') : t('admin.companyInactive')}</td>
+                <td>{String(row.createdAt ?? '').replace('T', ' ').slice(0, 19)}</td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  {can('admin', 'delete') && onOpenTruncate && (
+                    <button className="xbtn" title={t('admin.truncateTab')} aria-label={t('admin.truncateTab')}
+                      onClick={() => onOpenTruncate(String(row.id))}>🧹</button>
                   )}
-                </div>
-              </td>
-              <td>{row.status === 'active' ? t('admin.companyActive') : t('admin.companyInactive')}</td>
-              <td>{String(row.createdAt ?? '').replace('T', ' ').slice(0, 19)}</td>
-              <td>
-                {can('admin', 'delete') && onOpenTruncate && (
-                  <button className="xbtn" title={t('admin.truncateTab')} aria-label={t('admin.truncateTab')}
-                    onClick={() => onOpenTruncate(String(row.id))}>🧹</button>
-                )}
-                {can('admin', 'create') && (
-                  <button className="xbtn" title={t('admin.cloneCompany')} aria-label={t('admin.cloneCompany')}
-                    onClick={() => openClone(row)}>📋</button>
-                )}
-                {can('admin', 'export') && (
-                  <button className="xbtn" title={t('admin.exportCompany')} aria-label={t('admin.exportCompany')}
-                    onClick={() => exportCompany(row)}>⬇</button>
-                )}
-                {can('admin', 'update') && (
-                  <button className="xbtn" title={t('admin.editCompany')} aria-label={t('admin.editCompany')}
-                    onClick={() => openEditCompany(row)}>✏️</button>
-                )}
-                {can('admin', 'delete') && (
-                  <button className="xbtn" title={t('admin.delete')} aria-label={t('admin.delete')}
-                    onClick={() => remove(row)}>🗑</button>
-                )}
-              </td>
-            </tr>
-          ))}
-          {!rows.length && <tr><td colSpan={7} className="empty">{t('admin.noData')}</td></tr>}
+                  {can('admin', 'create') && (
+                    <button className="xbtn" title={t('admin.cloneCompany')} aria-label={t('admin.cloneCompany')}
+                      onClick={() => openClone(row)}>📋</button>
+                  )}
+                  {can('admin', 'export') && (
+                    <button className="xbtn" title={t('admin.exportCompany')} aria-label={t('admin.exportCompany')}
+                      onClick={() => exportCompany(row)}>⬇</button>
+                  )}
+                  {can('admin', 'update') && (
+                    <button className="xbtn" title={t('admin.editCompany')} aria-label={t('admin.editCompany')}
+                      onClick={() => openEditCompany(row)}>✏️</button>
+                  )}
+                  {can('admin', 'delete') && (
+                    <button className="xbtn" title={t('admin.delete')} aria-label={t('admin.delete')}
+                      onClick={() => remove(row)}>🗑</button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {!rows.length && <tr><td colSpan={8} className="empty">{t('admin.noData')}</td></tr>}
         </tbody>
       </table>
 
       {importOpen && (
         <div className="confirm-backdrop" onMouseDown={() => !importing && setImportOpen(false)}>
-          <div className="confirm-box" style={{ width: 460 }} role="dialog" aria-modal="true"
+          <div className="confirm-box" style={{ width: 480 }} role="dialog" aria-modal="true"
             onMouseDown={(e) => e.stopPropagation()}>
             <h3>{t('admin.importCompany')}</h3>
             <p className="muted">{t('admin.importHint')}</p>
             <div className="admform" style={{ display: 'grid', gridTemplateColumns: '1fr', maxWidth: 'none' }}>
               <label>{t('admin.importFile')}
-                <input type="file" accept=".zip,.csv.zip,.tar.zip,application/zip" disabled={importing}
+                <input type="file" multiple accept=".zip,.csv.zip,.tar.zip,application/zip" disabled={importing}
                   onChange={(e) => {
-                    setImportFile(e.target.files?.[0] ?? null);
+                    setImportFiles(Array.from(e.target.files ?? []));
                     setImportError(null);
                     setImportResult(null);
                   }} />
               </label>
-              <label>{t('admin.importTarget')}
-                <select value={importTarget} disabled={importing}
-                  onChange={(e) => setImportTarget(e.target.value)}>
-                  <option value="">{t('admin.importNew')}</option>
-                  {rows.map((row) => <option key={row.id} value={String(row.id)}>{row.code} - {row.name}</option>)}
-                </select>
-              </label>
+              {importFiles.length <= 1 && (
+                <label>{t('admin.importTarget')}
+                  <select value={importTarget} disabled={importing}
+                    onChange={(e) => setImportTarget(e.target.value)}>
+                    <option value="">{t('admin.importNew')}</option>
+                    {rows.map((row) => <option key={row.id} value={String(row.id)}>{row.code} - {row.name}</option>)}
+                  </select>
+                </label>
+              )}
               <label className="admcheck">
                 <input type="checkbox" checked={restoreUsers} disabled={importing}
                   onChange={(e) => setRestoreUsers(e.target.checked)} />
@@ -1407,17 +1503,23 @@ function Companies({ can, onOpenTruncate }) {
               {importError && <p className="formError" role="alert">{importError}</p>}
               {importResult && (
                 <p className="okmark" role="status">
-                  {t('admin.importDone')
-                    .replace('{tables}', importResult.tables)
-                    .replace('{rows}', importResult.rows)
-                    .replace('{version}', importResult.schemaVersion)}
+                  {importResult.multi
+                    ? t('admin.importMultiDone')
+                        .replace('{companies}', importResult.companyCount)
+                        .replace('{codes}', Array.isArray(importResult.codes) ? importResult.codes.join(', ') : '')
+                        .replace('{tables}', importResult.tables)
+                        .replace('{rows}', importResult.rows)
+                    : t('admin.importDone')
+                        .replace('{tables}', importResult.tables)
+                        .replace('{rows}', importResult.rows)
+                        .replace('{version}', importResult.schemaVersion)}
                   {importResult.usersRestored > 0 ? ` (+${importResult.usersRestored} tài khoản)` : ''}
                 </p>
               )}
             </div>
             <div className="confirm-actions">
               <button className="tb" disabled={importing} onClick={() => setImportOpen(false)}>{t('admin.cancel')}</button>
-              <button className="btn" disabled={!importFile || importing} onClick={importCompany}>
+              <button className="btn" disabled={!importFiles.length || importing} onClick={importCompany}>
                 {importing ? t('admin.importing') : t('admin.importAction')}
               </button>
             </div>

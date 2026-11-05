@@ -33,6 +33,7 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.StreamingOutput;
 import java.io.ByteArrayOutputStream;
 import java.io.FilterInputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -70,6 +71,7 @@ import org.postgresql.copy.CopyOut;
 public class CompanyDataResource {
 
     private static final String FORMAT = "ketoan-company-backup-csv";
+    private static final String MULTI_FORMAT = "ketoan-multi-company-backup-csv";
     private static final int FORMAT_VERSION = 2;
     private static final String ZIP_MIME = "application/zip";
     private static final int MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
@@ -145,6 +147,118 @@ public class CompanyDataResource {
         return Response.ok((StreamingOutput) out -> stream(out, schema, tables, manifestBytes), ZIP_MIME)
                 .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
                 .build();
+    }
+
+    @GET
+    @Path("/export-batch")
+    @Produces(ZIP_MIME)
+    @RolesAllowed("admin")
+    public Response exportBatch(@QueryParam("ids") String idsParam) throws Exception {
+        List<DmCongTy> allCompanies = companyService.listAll();
+        List<DmCongTy> selected = new ArrayList<>();
+        if (idsParam == null || idsParam.isBlank() || "all".equalsIgnoreCase(idsParam.trim())) {
+            selected.addAll(allCompanies);
+        } else {
+            Map<Long, DmCongTy> byId = new LinkedHashMap<>();
+            for (DmCongTy c : allCompanies) {
+                byId.put(c.id, c);
+            }
+            for (String token : idsParam.split(",")) {
+                String trimmed = token.trim();
+                if (trimmed.isEmpty()) continue;
+                try {
+                    Long cid = Long.valueOf(trimmed);
+                    DmCongTy found = byId.get(cid);
+                    if (found == null) throw problem(Response.Status.NOT_FOUND, "Không tìm thấy công ty ID: " + cid);
+                    selected.add(found);
+                } catch (NumberFormatException e) {
+                    throw problem(Response.Status.BAD_REQUEST, "ID công ty không hợp lệ: " + trimmed);
+                }
+            }
+        }
+        if (selected.isEmpty()) {
+            throw problem(Response.Status.BAD_REQUEST, "Chưa chọn công ty nào để sao lưu");
+        }
+        if (selected.size() == 1) {
+            return export(selected.get(0).id);
+        }
+
+        List<CompanyExportPlan> plans = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (DmCongTy company : selected) {
+                String schema = company.schemaName;
+                provisioner.ensureMigrated(schema);
+                List<Table> tbls = tables(connection, schema);
+                Map<String, Object> coManifest = manifest(company, schema, tbls);
+                byte[] coManifestBytes = mapper.writeValueAsBytes(coManifest);
+                plans.add(new CompanyExportPlan(company, schema, tbls, coManifestBytes));
+            }
+        }
+
+        Map<String, Object> bundleManifest = new LinkedHashMap<>();
+        bundleManifest.put("format", MULTI_FORMAT);
+        bundleManifest.put("formatVersion", FORMAT_VERSION);
+        bundleManifest.put("exportedAt", OffsetDateTime.now().toString());
+        bundleManifest.put("companyCount", plans.size());
+        bundleManifest.put("companies", plans.stream().map(p -> p.company().code).toList());
+        byte[] bundleManifestBytes = mapper.writeValueAsBytes(bundleManifest);
+
+        String fileName = "companies-backup-" + plans.size() + "-companies.zip";
+        return Response.ok((StreamingOutput) out -> streamBatch(out, plans, bundleManifestBytes), ZIP_MIME)
+                .header("Content-Disposition", "attachment; filename=\"" + fileName + "\"")
+                .build();
+    }
+
+    private void streamBatch(OutputStream out, List<CompanyExportPlan> plans, byte[] bundleManifestBytes) throws IOException {
+        try (Connection connection = dataSource.getConnection()) {
+            CopyManager copy = connection.unwrap(PGConnection.class).getCopyAPI();
+            try (ZipOutputStream outerZip = new ZipOutputStream(out, StandardCharsets.UTF_8)) {
+                outerZip.putNextEntry(new ZipEntry("manifest.json"));
+                outerZip.write(bundleManifestBytes);
+                outerZip.closeEntry();
+
+                for (CompanyExportPlan plan : plans) {
+                    String entryName = "companies/company-" + safe(plan.company().code) + ".csv.zip";
+                    outerZip.putNextEntry(new ZipEntry(entryName));
+                    OutputStream nonClosingOut = new FilterOutputStream(outerZip) {
+                        @Override
+                        public void write(byte[] b, int off, int len) throws IOException {
+                            out.write(b, off, len);
+                        }
+
+                        @Override
+                        public void close() throws IOException {
+                            out.flush();
+                        }
+                    };
+                    try (ZipOutputStream nestedZip = new ZipOutputStream(nonClosingOut, StandardCharsets.UTF_8)) {
+                        nestedZip.putNextEntry(new ZipEntry("manifest.json"));
+                        nestedZip.write(plan.manifestBytes());
+                        nestedZip.closeEntry();
+                        for (Table table : plan.tables()) {
+                            nestedZip.putNextEntry(new ZipEntry(table.name() + ".csv"));
+                            CopyOut rows = copy.copyOut(copyOutSql(plan.schema(), table));
+                            try {
+                                byte[] chunk;
+                                while ((chunk = rows.readFromCopy(true)) != null) {
+                                    if (chunk.length > 0) nestedZip.write(chunk);
+                                }
+                            } finally {
+                                try {
+                                    if (rows.isActive()) rows.cancelCopy();
+                                } catch (SQLException ignored) {
+                                }
+                            }
+                            nestedZip.closeEntry();
+                        }
+                        nestedZip.finish();
+                    }
+                    outerZip.closeEntry();
+                }
+            }
+        } catch (SQLException e) {
+            throw new IOException("Multi-company export failed", e);
+        }
     }
 
     private void stream(OutputStream out, String schema, List<Table> tables, byte[] manifestBytes) throws IOException {
@@ -282,58 +396,141 @@ public class CompanyDataResource {
                     new TypeReference<Map<String, Object>>() { });
             zip.closeEntry();
 
-            if (!FORMAT.equals(string(manifest, "format")) || number(manifest.get("formatVersion")) != FORMAT_VERSION) {
+            String fmt = string(manifest, "format");
+            if (MULTI_FORMAT.equals(fmt) && number(manifest.get("formatVersion")) == FORMAT_VERSION) {
+                if (!sysAdmin) {
+                    throw problem(Response.Status.FORBIDDEN, "Chỉ Quản trị viên hệ thống mới được phép phục hồi gói nhiều công ty");
+                }
+                return importMultiPackage(zip, restoreUsers);
+            }
+            if (!FORMAT.equals(fmt) || number(manifest.get("formatVersion")) != FORMAT_VERSION) {
                 throw problem(Response.Status.BAD_REQUEST, "Định dạng tệp sao lưu không được hỗ trợ");
             }
-            String packageVersion = string(manifest, "schemaVersion");
-            if (packageVersion == null || packageVersion.isBlank()) {
-                throw problem(Response.Status.BAD_REQUEST, "Gói dữ liệu thiếu schema version");
-            }
-
-            boolean isCreatingNew = (companyId == null || companyId.isBlank());
-            DmCongTy company = target(companyId, manifest);
-            String schema = company.schemaName;
-            String latest = provisioner.latestVersion();
-            String current = provisioner.currentVersion(schema);
-            boolean upgraded = false;
-
-            if (TenantProvisioner.versionNumber(current) < TenantProvisioner.versionNumber(latest)) {
-                try {
-                    provisioner.migrate(schema);
-                } catch (RuntimeException e) {
-                    throw problem(Response.Status.BAD_REQUEST, "Không thể nâng cấp schema công ty: " + e.getMessage());
-                }
-                upgraded = true;
-                current = provisioner.currentVersion(schema);
-            }
-            if (TenantProvisioner.versionNumber(packageVersion) > TenantProvisioner.versionNumber(current)) {
-                throw problem(Response.Status.CONFLICT,
-                        "Gói dữ liệu có schema version " + packageVersion + " mới hơn CSDL (" + current + ")");
-            }
-
-            Stats stats = copyEntries(zip, schema, manifest);
-
-            int usersRestored = 0;
-            if (!"false".equalsIgnoreCase(restoreUsers)) {
-                usersRestored = restoreCompanyUsers(company, manifest, isCreatingNew, sysAdmin);
-            }
-
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("companyId", company.id);
-            result.put("code", company.code);
-            result.put("schemaName", schema);
-            result.put("schemaVersion", packageVersion);
-            result.put("targetVersion", current);
-            result.put("upgraded", upgraded);
-            result.put("tables", stats.tables());
-            result.put("rows", stats.rows());
-            result.put("usersRestored", usersRestored);
-            return result;
+            return importSingleCompanyFromStream(zip, manifest, companyId, restoreUsers, sysAdmin, false);
         } catch (WebApplicationException e) {
             throw e;
         } catch (Exception e) {
             throw problem(Response.Status.BAD_REQUEST, "Import thất bại: " + e.getMessage());
         }
+    }
+
+    private Map<String, Object> importMultiPackage(ZipInputStream outerZip, String restoreUsers) throws Exception {
+        int companyCount = 0;
+        int totalTables = 0;
+        long totalRows = 0L;
+        int totalUsersRestored = 0;
+        String latestVersion = provisioner.latestVersion();
+        List<String> codes = new ArrayList<>();
+
+        ZipEntry outerEntry;
+        while ((outerEntry = outerZip.getNextEntry()) != null) {
+            if (outerEntry.isDirectory() || !outerEntry.getName().endsWith(".zip")) {
+                outerZip.closeEntry();
+                continue;
+            }
+            InputStream nonClosingIn = new FilterInputStream(outerZip) {
+                @Override
+                public void close() {
+                    // Không đóng outerZip khi kết thúc đọc một gói công ty con.
+                }
+            };
+            ZipInputStream nestedZip = new ZipInputStream(nonClosingIn, StandardCharsets.UTF_8);
+            ZipEntry first = nestedZip.getNextEntry();
+            if (first == null || !"manifest.json".equals(first.getName())) {
+                throw problem(Response.Status.BAD_REQUEST, "Tệp công ty con không hợp lệ: " + outerEntry.getName());
+            }
+            Map<String, Object> coManifest = mapper.readValue(readEntry(nestedZip, MAX_MANIFEST_BYTES),
+                    new TypeReference<Map<String, Object>>() { });
+            nestedZip.closeEntry();
+
+            if (!FORMAT.equals(string(coManifest, "format")) || number(coManifest.get("formatVersion")) != FORMAT_VERSION) {
+                throw problem(Response.Status.BAD_REQUEST, "Định dạng gói công ty con không được hỗ trợ: " + outerEntry.getName());
+            }
+            Map<String, Object> singleRes = importSingleCompanyFromStream(nestedZip, coManifest, null, restoreUsers, true, true);
+            while (nestedZip.getNextEntry() != null) {
+                nestedZip.closeEntry();
+            }
+            outerZip.closeEntry();
+
+            companyCount++;
+            totalTables += ((Number) singleRes.getOrDefault("tables", 0)).intValue();
+            totalRows += ((Number) singleRes.getOrDefault("rows", 0L)).longValue();
+            totalUsersRestored += ((Number) singleRes.getOrDefault("usersRestored", 0)).intValue();
+            Object codeObj = singleRes.get("code");
+            if (codeObj != null) codes.add(String.valueOf(codeObj));
+        }
+
+        if (companyCount == 0) {
+            throw problem(Response.Status.BAD_REQUEST, "Gói sao lưu không chứa dữ liệu công ty nào");
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("multi", true);
+        result.put("companyCount", companyCount);
+        result.put("codes", codes);
+        result.put("schemaVersion", latestVersion);
+        result.put("targetVersion", latestVersion);
+        result.put("tables", totalTables);
+        result.put("rows", totalRows);
+        result.put("usersRestored", totalUsersRestored);
+        return result;
+    }
+
+    private Map<String, Object> importSingleCompanyFromStream(ZipInputStream zip,
+                                                              Map<String, Object> manifest,
+                                                              String companyId,
+                                                              String restoreUsers,
+                                                              boolean sysAdmin,
+                                                              boolean upsertByCode) throws Exception {
+        String packageVersion = string(manifest, "schemaVersion");
+        if (packageVersion == null || packageVersion.isBlank()) {
+            throw problem(Response.Status.BAD_REQUEST, "Gói dữ liệu thiếu schema version");
+        }
+
+        Object value = manifest.get("company");
+        Map<?, ?> meta = value instanceof Map<?, ?> map ? map : Map.of();
+        String manifestCode = objectString(meta.get("code"));
+        boolean isCreatingNew = (companyId == null || companyId.isBlank())
+                && (manifestCode == null || DmCongTy.findByCode(manifestCode) == null);
+
+        DmCongTy company = target(companyId, manifest, upsertByCode);
+        String schema = company.schemaName;
+        String latest = provisioner.latestVersion();
+        String current = provisioner.currentVersion(schema);
+        boolean upgraded = false;
+
+        if (TenantProvisioner.versionNumber(current) < TenantProvisioner.versionNumber(latest)) {
+            try {
+                provisioner.migrate(schema);
+            } catch (RuntimeException e) {
+                throw problem(Response.Status.BAD_REQUEST, "Không thể nâng cấp schema công ty: " + e.getMessage());
+            }
+            upgraded = true;
+            current = provisioner.currentVersion(schema);
+        }
+        if (TenantProvisioner.versionNumber(packageVersion) > TenantProvisioner.versionNumber(current)) {
+            throw problem(Response.Status.CONFLICT,
+                    "Gói dữ liệu có schema version " + packageVersion + " mới hơn CSDL (" + current + ")");
+        }
+
+        Stats stats = copyEntries(zip, schema, manifest);
+
+        int usersRestored = 0;
+        if (!"false".equalsIgnoreCase(restoreUsers)) {
+            usersRestored = restoreCompanyUsers(company, manifest, isCreatingNew, sysAdmin);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("companyId", company.id);
+        result.put("code", company.code);
+        result.put("schemaName", schema);
+        result.put("schemaVersion", packageVersion);
+        result.put("targetVersion", current);
+        result.put("upgraded", upgraded);
+        result.put("tables", stats.tables());
+        result.put("rows", stats.rows());
+        result.put("usersRestored", usersRestored);
+        return result;
     }
 
 
@@ -488,7 +685,7 @@ public class CompanyDataResource {
         }
     }
 
-    private DmCongTy target(String companyId, Map<String, Object> manifest) {
+    private DmCongTy target(String companyId, Map<String, Object> manifest, boolean upsertByCode) {
         if (companyId != null && !companyId.isBlank()) {
             try {
                 return find(Long.valueOf(companyId.trim()));
@@ -500,8 +697,18 @@ public class CompanyDataResource {
         Map<?, ?> meta = value instanceof Map<?, ?> map ? map : Map.of();
         String code = objectString(meta.get("code"));
         if (code == null || code.isBlank()) throw problem(Response.Status.BAD_REQUEST, "Gói dữ liệu thiếu mã công ty");
-        if (DmCongTy.findByCode(code) != null) {
-            throw problem(Response.Status.CONFLICT, "Mã công ty đã tồn tại — chọn công ty đích để ghi đè");
+        DmCongTy existing = DmCongTy.findByCode(code);
+        if (existing != null) {
+            if (!upsertByCode) {
+                throw problem(Response.Status.CONFLICT, "Mã công ty đã tồn tại — chọn công ty đích để ghi đè");
+            }
+            DmCongTy updateReq = new DmCongTy();
+            updateReq.name = objectString(meta.get("name"));
+            if (updateReq.name == null || updateReq.name.isBlank()) updateReq.name = existing.name;
+            updateReq.address = objectString(meta.get("address"));
+            updateReq.taxCode = objectString(meta.get("taxCode"));
+            updateReq.phone = objectString(meta.get("phone"));
+            return companyService.update(existing.id, updateReq);
         }
         DmCongTy request = new DmCongTy();
         request.code = code;
@@ -845,6 +1052,8 @@ public class CompanyDataResource {
     private record Table(String name, List<Column> columns) { }
 
     private record Stats(int tables, long rows) { }
+
+    private record CompanyExportPlan(DmCongTy company, String schema, List<Table> tables, byte[] manifestBytes) { }
 
     private record VoucherSpec(String key, String module, String prefix, String table, String codeCol, String filterType) { }
 

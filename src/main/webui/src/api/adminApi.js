@@ -61,6 +61,13 @@ export const adminApi = {
     update: (id, body) => apiFetch(`/api/companies/${id}`, { method: 'PUT', body }),
     remove: (id) => apiFetch(`/api/companies/${id}`, { method: 'DELETE' }),
     export: (id, code) => downloadFile(`/company/${id}/export`, `company-${code || id}.csv.zip`),
+    exportBatch: (ids = []) => {
+      const idsParam = Array.isArray(ids) && ids.length ? ids.join(',') : 'all';
+      const filename = Array.isArray(ids) && ids.length === 1
+        ? `company-${ids[0]}.csv.zip`
+        : `companies-backup-${Array.isArray(ids) && ids.length ? ids.length : 'all'}-companies.zip`;
+      return downloadFile('/company/export-batch' + qs({ ids: idsParam }), filename);
+    },
     import: (file, companyId, onProgress, restoreUsers = true) =>
       uploadPackage('/api/company/import', file, companyId, onProgress, restoreUsers),
     clone: (id, body) => apiFetch(`/api/company/${id}/clone`, { method: 'POST', body }),
